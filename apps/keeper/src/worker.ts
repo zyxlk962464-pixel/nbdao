@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { privateKeyToAccount } from 'viem/accounts';
 import { decodeFunctionData, decodeFunctionResult, encodeFunctionData, keccak256, parseEventLogs, parseTransaction, type Address,type Hex } from 'viem';
-import { executorAbi, minimumOutput, slipMinimum, type PlanInput } from '../../../packages/shared/src/index.js';
+import { executorAbi, minimumOutput, slipMinimum, type PlanInput, type MonitorStatus } from '../../../packages/shared/src/index.js';
 import type { Runtime } from './config.js';
 import { Chain, message, publicClient,sellFeeGateReason } from './chain.js';
 import { Optimizer, netOutput } from './optimizer.js';
@@ -11,11 +11,19 @@ class CanonicalReceiptMismatch extends Error {}
 export class Worker {
   busy=false;holder=randomUUID(); lastHead=0n;lastHeadHash:Hex|null|undefined;
   private running=false;private queued=false;private draining=false;private stopping=false;private unwatch:(()=>void)|undefined;
+  private startedAt=0;private observedAt=0;private checkedAt=0;
   constructor(public config:Runtime,public chain:Chain,public optimizer:Optimizer,public store:Store){}
+  status():MonitorStatus {
+    const enabled=this.config.app.mode!=='read-only'&&this.config.app.ready;
+    const fresh=Date.now()-(this.observedAt||this.startedAt)<Math.max(30000,this.config.pollMs*5);
+    const stalled=this.busy&&Date.now()-(this.checkedAt||this.startedAt)>Math.max(120000,this.config.quoteTimeoutMs*2+30000);
+    return {location:this.config.cloud?'cloud':'local',running:this.running,enabled:this.running&&enabled,
+      healthy:this.running&&(!enabled||fresh&&!stalled),lastCheckedAt:this.checkedAt||null,lastBlockNumber:this.lastHead?this.lastHead.toString():null};
+  }
   start(){
-    if(this.running)return;this.running=true;this.stopping=false;
+    if(this.running)return;this.running=true;this.stopping=false;this.startedAt=Date.now();
     this.unwatch=this.chain.client.watchBlockNumber({poll:true,pollingInterval:this.config.pollMs,emitOnBegin:true,emitMissed:false,
-      onBlockNumber:()=>{this.queued=true;void this.drain();},
+      onBlockNumber:()=>{this.observedAt=Date.now();this.queued=true;void this.drain();},
       onError:e=>{for(const t of this.store.tasks().filter(t=>!['Closed','PendingTx','Confirming'].includes(t.status)&&!(t.status==='Error'&&t.reason.includes('未知交易'))))this.store.state(t.id,'Error',`区块监听暂时失败：${message(e)}`);},
     });
   }
@@ -116,6 +124,7 @@ export class Worker {
     const b=await this.chain.client.getBlock();if(b.number===null||b.hash===null)throw new Error('监听区块尚未确认');
     if(b.number===this.lastHead&&b.hash===this.lastHeadHash)return;
     this.lastHead=b.number;this.lastHeadHash=b.hash;
+    this.checkedAt=Date.now();
     const reliable=await this.reconcile(b.number);if(!reliable||this.store.pending().length)return;
     for(const registered of this.store.tasks()){
       if(this.stopping)return;

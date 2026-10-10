@@ -16,7 +16,13 @@ ARG NEXT_PUBLIC_APP_URL
 ARG NEXT_PUBLIC_BSC_RPC_URL=https://bsc-dataseed.bnbchain.org
 RUN node scripts/install-tools.mjs && pnpm build
 
+# The HTTP process cannot read the signer's environment or private data directory.
+RUN groupadd --gid 1001 nbdao-web && useradd --uid 1001 --gid 1001 --no-log-init --create-home --shell /usr/sbin/nologin nbdao-web \
+    && groupadd --gid 1002 nbdao-keeper && useradd --uid 1002 --gid 1002 --no-log-init --create-home --shell /usr/sbin/nologin nbdao-keeper \
+    && mkdir -p /app/apps/web/.next/cache \
+    && chown -R 1001:1001 /app/apps/web/.next/cache
+
 ENV NODE_ENV=production SELLER_MODE=read-only KEEPER_HOST=127.0.0.1 \
-    KEEPER_PORT=8787 KEEPER_DATABASE=/data/keeper.sqlite
+    KEEPER_PORT=8787 KEEPER_DATABASE=/data/keeper.sqlite RUNTIME_ISOLATION=1
 EXPOSE 3000
 CMD ["node", "scripts/start.mjs"]

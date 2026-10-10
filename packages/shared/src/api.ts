@@ -6,6 +6,11 @@ export type AppConfig = {
   walletRpcUrl: string; explorerUrl: string; ready: boolean; missing: string[];
   /** HTTP head detection interval; business checks run only for new blocks. */
   blockPollMs?: number;
+  monitor?: MonitorStatus;
+};
+export type MonitorStatus = {
+  location: 'cloud'|'local'; running: boolean; enabled: boolean; healthy: boolean;
+  lastCheckedAt: number|null; lastBlockNumber: string|null;
 };
 /** Spot pool reference, not an executable sale quote. Price is scaled by 10^18. */
 export type PriceSnapshot = {

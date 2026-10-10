@@ -7,6 +7,7 @@ export async function GET(){
     const response=await fetch(`${base.replace(/\/$/,'')}/status`,{cache:'no-store',signal:AbortSignal.timeout(3000)});
     const status=await response.json();
     if(!response.ok||status.status!=='ok')throw new Error('Keeper unavailable');
-    return Response.json({status:'ok',mode:status.mode,executionReady:status.mode!=='read-only'&&status.ready},{headers:{'Cache-Control':'no-store'}});
+    if(!status.monitor?.running||!status.monitor.healthy)throw new Error('Worker unavailable');
+    return Response.json({status:'ok',mode:status.mode,executionReady:status.mode!=='read-only'&&status.ready&&status.monitor.enabled,monitor:status.monitor},{headers:{'Cache-Control':'no-store'}});
   }catch{return Response.json({status:'unavailable'},{status:503,headers:{'Cache-Control':'no-store'}});}
 }
