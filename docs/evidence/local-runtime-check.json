@@ -1,0 +1,42 @@
+{
+  "checkedAt": "2026-10-10T00:17:09.862Z",
+  "configuration": {
+    "chainId": 56,
+    "sellerAddress": "0xd072DF01c890695df38C42d5805E951a1b3dE07b",
+    "executor": "0x311349ab245f51eb2B97E9b85B2fa0bbd20211DD",
+    "ready": true,
+    "missing": [],
+    "mode": "read-only"
+  },
+  "executionEnabled": false,
+  "activeTaskCount": 1,
+  "task": {
+    "taskId": "0xf1119b83705b8094f457abc89f1b9909f8c07bdff0809f864dca9801ab4d9651",
+    "status": 1,
+    "notBefore": "1791590400",
+    "expiresAt": "1791591600",
+    "minUSDTPerToken": "138832248981933985",
+    "maxTotalInput": "216088122320224397815",
+    "currentFullBalanceMinimumUSDT": "30",
+    "budgetPolicyRegistered": true,
+    "soldInput": "0",
+    "saleGasSpentWei": "0",
+    "receivedUSDT": "0",
+    "attempts": 0,
+    "serviceStatus": "MissingConfiguration",
+    "reason": "只读模式不发送交易。"
+  },
+  "price": {
+    "spotPriceUSDTPerTokenWei": "218456246043380831",
+    "blockNumber": "126668148",
+    "timestamp": "1791563449"
+  },
+  "notes": [
+    "本机私钥仅保存到0600且Git忽略的.env，报告不含密钥或助记词。",
+    "钱包已自行确认有限授权、创建任务和预算签名。原40USDT任务已取消，新签署任务的底线为30USDT。",
+    "08:00后后台被Anvil/归档RPC故障挡住。修复后08:12的主网只读executeChunk调用返回InvalidPoolInput，未广播交易。",
+    "恢复live服务被自动审批拒绝：30USDT底线尚待文字确认，且卖出路径未可靠验证。当前服务和默认配置均为只读，LIVE_EXECUTION为空。",
+    "任务检查时尚未进行真实卖出；卖出Gas为0不代表之前部署、授权、创建、取消交易没有费用。",
+    "价格字段保留较早快照。真实卖出路径仍未验证通过，配置ready不代表代币可卖。"
+  ]
+}

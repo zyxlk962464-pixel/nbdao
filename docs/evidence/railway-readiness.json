@@ -1,0 +1,50 @@
+{
+  "checkedAt": "2026-10-10T07:05:09.908Z",
+  "scope": "Railway preparation; not a cloud deployment",
+  "tests": {
+    "unit": 145,
+    "localIntegration": 2,
+    "typecheck": "passed",
+    "productionBuild": "passed"
+  },
+  "container": {
+    "platform": "linux/amd64",
+    "health": "passed",
+    "readOnlyExecutionReady": false,
+    "page": "HTTP 200",
+    "foreignWalletRejected": true,
+    "publicQuoteRejected": true,
+    "sqlitePermission": "0600",
+    "restartPreservedAuditRecord": true,
+    "keeperExitStopsContainer": true,
+    "localEnvExcluded": true,
+    "localDatabaseExcluded": true
+  },
+  "migrationPreview": {
+    "tasks": 4,
+    "pending": 0,
+    "gasSpentWei": "0",
+    "restored": true,
+    "cutoverReady": false
+  },
+  "git": {
+    "independentRepository": true,
+    "origin": "git@github.com:zyxlk962464-pixel/nbdao.git",
+    "privateKeyTracked": false,
+    "privateKeyFoundInUploadFiles": false,
+    "pushed": false
+  },
+  "localService": {
+    "mode": "live",
+    "ready": true,
+    "ownerRestrictionApplied": true,
+    "currentTasksRetained": true
+  },
+  "railway": {
+    "accountProvisioned": false,
+    "volumeCreated": false,
+    "sealedKeyConfigured": false,
+    "realHandoffPerformed": false,
+    "newServiceConfig": "dashboard settings per official docs; railway.json legacy only"
+  }
+}

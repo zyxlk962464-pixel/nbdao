@@ -1,0 +1,17 @@
+{
+  "name": "nbdao-seller", "private": true, "version": "0.1.0", "type": "module",
+  "packageManager": "pnpm@11.22.0", "engines": { "node": ">=24.5" },
+  "scripts": {
+    "dev": "node scripts/dev.mjs", "dev:web": "pnpm --filter @nbdao/web dev", "start": "node scripts/start.mjs",
+    "dev:keeper": "node --watch --import tsx apps/keeper/src/main.ts", "keeper": "node --import tsx apps/keeper/src/main.ts",
+    "build": "pnpm contracts:build && pnpm typecheck && pnpm --filter @nbdao/web build",
+    "contracts:build": "node scripts/forge.mjs build && node scripts/export-abi.mjs",
+    "test:contracts": "node scripts/forge.mjs test -vv",
+    "test": "vitest run", "typecheck": "tsc --noEmit && pnpm --filter @nbdao/web typecheck",
+    "check:chain": "node --import tsx scripts/check-chain.ts", "test:fork": "node --import tsx scripts/fork-poc.ts",
+    "demo": "node --import tsx scripts/demo.ts", "deploy": "node --import tsx scripts/deploy.ts",
+    "db:export": "node --import tsx scripts/migrate-db.ts export", "db:restore": "node --import tsx scripts/migrate-db.ts restore"
+  },
+  "dependencies": { "viem": "2.57.4", "@openzeppelin/contracts": "5.5.0", "zod": "4.1.12" },
+  "devDependencies": { "tsx": "4.23.15", "typescript": "5.9.3", "@types/node": "24.10.1", "vitest": "5.0.3" }
+}

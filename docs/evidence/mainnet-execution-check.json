@@ -1,0 +1,56 @@
+{
+  "taskId": "0xf1119b83705b8094f457abc89f1b9909f8c07bdff0809f864dca9801ab4d9651",
+  "chainId": 56,
+  "sellerAddress": "0xd072DF01c890695df38C42d5805E951a1b3dE07b",
+  "ownerAndExecutor": "0x311349ab245f51eb2B97E9b85B2fa0bbd20211DD",
+  "windowBeijing": "2026-10-10 08:00–08:20",
+  "readOnlyExecutionCheck": {
+    "observedAt": "2026-10-10T00:12:06Z",
+    "blockNumber": "126729645",
+    "blockHash": "0x489888f398127cef4b301fcc1c8b9c501af37b46a7e60da85e87024b9add0fcc",
+    "function": "executeChunk",
+    "input": "216088122320224397815",
+    "requestedMinimumUSDTWei": "30000000000000000075",
+    "error": "InvalidPoolInput()",
+    "errorSelector": "0xc1d2b9a8",
+    "hasBestCandidate": false,
+    "signedMaxQuoteAgeBlocks": 3,
+    "elapsedMilliseconds": 2854,
+    "observedQuoteAgeBlocks": "6",
+    "transactionSigned": false,
+    "transactionBroadcast": false,
+    "gasSpentWei": "0"
+  },
+  "laterPoolSnapshot": {
+    "observedAt": "2026-10-10T00:14:29Z",
+    "blockNumber": "126729962",
+    "pair": "0x17662cadea9e98a5a660ca1fe993f136d3cb0ae1",
+    "pendingTokensWei": "0",
+    "tokenBalanceWei": "3146595016526374924112346",
+    "reserveUSDTWei": "687437844627957234186502",
+    "reserveTokenWei": "3146595016526374924112346",
+    "reserveTimestamp": "1791590399",
+    "limitation": "此快照晚于回滚调用，不能据此确定该次 InvalidPoolInput 命中了哪一项检查，也不能推出当时的最终卖出税率。"
+  },
+  "serviceSnapshot": {
+    "observedAt": "2026-10-10T00:17:09.862Z",
+    "mode": "read-only",
+    "configurationReady": true,
+    "reason": "只读模式不发送交易。",
+    "taskOnChainStatus": 1,
+    "attempts": 0,
+    "soldInput": "0",
+    "receivedUSDT": "0",
+    "saleGasSpentWei": "0"
+  },
+  "restartApproval": {
+    "liveRestartApproved": false,
+    "reason": "自动审批拒绝恢复实盘：30 USDT 底线与先前文字确认的 40 USDT 不同，且卖出路径尚未可靠验证。",
+    "userClarificationPending": true
+  },
+  "validation": {
+    "typecheck": "passed",
+    "readOnlyDirectQuote": "reverted",
+    "freshBlockParallelQuoteOptimization": "类型检查通过，尚无成功主网卖出运行证据。"
+  }
+}

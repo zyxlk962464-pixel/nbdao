@@ -1,0 +1,104 @@
+{
+  "kind": "predeployment-owner-read-only-review",
+  "chainId": 56,
+  "owner": "0x311349ab245f51eb2B97E9b85B2fa0bbd20211DD",
+  "blockNumber": "126661062",
+  "blockHash": "0x577fedd01bf60a26cee8da56d249287a0ce65c358ca7479e8355d88fcabf4005",
+  "timestamp": "1791560258",
+  "noSignOrBroadcast": true,
+  "bnb": "101212495225939680",
+  "reads": [
+    {
+      "key": "balanceOfOwner",
+      "value": "216088122320224397815"
+    },
+    {
+      "key": "pendingOwner",
+      "value": "0"
+    },
+    {
+      "key": "whitelistedOwner",
+      "value": false
+    },
+    {
+      "key": "pendingPair",
+      "value": "0"
+    },
+    {
+      "key": "whitelistedPair",
+      "value": false
+    },
+    {
+      "key": "sellFee",
+      "value": [
+        "100",
+        true,
+        "3146818620288392519570242"
+      ]
+    },
+    {
+      "key": "routerAllowance",
+      "value": "999999999000000000000000000"
+    },
+    {
+      "key": "launched",
+      "value": false
+    },
+    {
+      "key": "tokenOwner",
+      "value": "0x0000000000000000000000000000000000000000"
+    },
+    {
+      "key": "startTime",
+      "value": "1778198400"
+    },
+    {
+      "key": "totalPower",
+      "error": "The contract function \"totalPower\" reverted with the following reason:\nerr Amount"
+    },
+    {
+      "key": "ownerInfo",
+      "value": [
+        "0xE0044A81de141C85849B725D904Bd6edcE2419A2",
+        "11808820",
+        "0",
+        "2",
+        "92371130927159889390",
+        "153000000000000000",
+        "2",
+        "20679",
+        "0",
+        "0",
+        "63",
+        "216088122320224397815",
+        "0"
+      ]
+    },
+    {
+      "key": "usdtOwner",
+      "value": "0"
+    }
+  ],
+  "userInfoDecoded": {
+    "inviter": "0xE0044A81de141C85849B725D904Bd6edcE2419A2",
+    "id": "11808820",
+    "tOwnedU": "0",
+    "lpAmount": "2",
+    "orderUsdtAmount": "92371130927159889390",
+    "bnbAmount": "153000000000000000",
+    "power": "2",
+    "lastReleaseDay": "20679",
+    "teamBNBAmount": "0",
+    "hasTeamReward": "0",
+    "rewardDebt": "63",
+    "rewardTotalAmount": "216088122320224397815",
+    "sellRewardAmount": "0"
+  },
+  "interpretation": {
+    "userInfoLayoutVerifiedFromSourceLines": "806-822",
+    "pendingOwner": "0",
+    "unSoldRewards": "216088122320224397815",
+    "rewardNote": "未卖出奖励覆盖当前余额，但不免除基础卖出税；执行前 reward/sync 会按真实业务状态运行。",
+    "totalPowerGetter": "源码836-837未public；猜测totalPower()落入fallback并触发err Amount，不能解读为totalPower=0。"
+  }
+}

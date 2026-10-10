@@ -1,0 +1,34 @@
+import { describe,it,expect,beforeAll,afterAll } from 'vitest';
+import { runtime } from '../apps/keeper/src/config.js';
+import { Chain } from '../apps/keeper/src/chain.js';
+import { Optimizer } from '../apps/keeper/src/optimizer.js';
+import { UNIT,type PlanInput } from '../packages/shared/src/index.js';
+import { privateKeyToAccount } from 'viem/accounts';
+import { LOCAL_OWNER_KEY } from '../apps/keeper/src/config.js';
+const enabled=process.env.RUN_KEEPER_INTEGRATION==='1';
+let sourceSnapshot:unknown;
+beforeAll(async()=>{if(enabled){const {rpc}=await import('../apps/keeper/src/optimizer.js');sourceSnapshot=await rpc('http://127.0.0.1:8545','evm_snapshot');await rpc('http://127.0.0.1:8545','evm_mine');}});
+afterAll(async()=>{if(enabled&&sourceSnapshot!==undefined){const {rpc}=await import('../apps/keeper/src/optimizer.js');await rpc('http://127.0.0.1:8545','evm_revert',[sourceSnapshot]);}});
+describe.skipIf(!enabled)('真实 localhost Anvil 顺序状态分叉模拟（Mock 专项）',()=>{
+  it('simulates 3 candidates at one block, obeys tax/floor and does not change source chain',async()=>{
+    process.env.SELLER_MODE='local';process.env.RPC_URLS='http://127.0.0.1:8545';delete process.env.FORK_RPC_URL;const config=runtime(),chain=new Chain(config),optimizer=new Optimizer(config,chain),owner=privateKeyToAccount(LOCAL_OWNER_KEY).address;const before=await chain.wallet(owner);const now=Number(before.timestamp);const p:PlanInput={owner,executor:config.app.executor!,notBefore:now+60,expiresAt:now+1800,maxChunks:20,maxTotalInput:before.tokenBalance,minUSDTPerToken:(UNIT/100n).toString(),maxDustTokens:'0',maxGasPrice:(10n**10n).toString(),policy:{slippageBps:100,maxAttempts:20,gasBudgetWei:UNIT.toString(),maxTxGasWei:(UNIT/10n).toString(),minEconomicUSDT:'0',confirmations:1,maxQuoteAgeBlocks:30}};const quote=await optimizer.quote(p);expect(quote.reason).not.toContain('归档');expect(quote.candidates).toHaveLength(3);expect(quote.futureScenario).toBe(true);expect(quote.best).toBeDefined();expect(quote.best!.complete).toBe(true);expect(quote.best!.chunks.length).toBeGreaterThan(1);expect(BigInt(quote.best!.output)).toBeGreaterThan(0n);const after=await chain.wallet(owner);expect(after.tokenBalance).toBe(before.tokenBalance);expect(after.usdtBalance).toBe(before.usdtBalance);expect(after.allowance).toBe(before.allowance);
+  },120000);
+});
+
+describe.skipIf(!enabled)('真实 localhost 服务和 Keeper 清仓流程（Mock 专项）',()=>{
+  it('approves, creates, signs registration and confirms all chunks with persistent receipts',async()=>{
+    const { spawn }=await import('node:child_process');const { mkdtempSync,rmSync }=await import('node:fs');const { tmpdir }=await import('node:os');const { join }=await import('node:path');const { createWalletClient,http,parseEventLogs }=await import('viem');const { executorAbi,tokenAbi,policyMessage }=await import('../packages/shared/src/index.js');const { ROOT }=await import('../apps/keeper/src/config.js');const { params }=await import('../apps/keeper/src/chain.js');
+    process.env.SELLER_MODE='local';process.env.RPC_URLS='http://127.0.0.1:8545';delete process.env.FORK_RPC_URL;const config=runtime(),chain=new Chain(config),account=privateKeyToAccount(LOCAL_OWNER_KEY),wallet=createWalletClient({account,transport:http(config.rpcUrls[0]!)}),before=await chain.wallet(account.address);expect(BigInt(before.tokenBalance)).toBeGreaterThan(0n);const p:PlanInput={owner:account.address,executor:config.app.executor!,notBefore:Number(before.timestamp),expiresAt:Number(before.timestamp)+1800,maxChunks:20,maxTotalInput:before.tokenBalance,minUSDTPerToken:(UNIT/100n).toString(),maxDustTokens:'0',maxGasPrice:(10n**10n).toString(),policy:{slippageBps:100,maxAttempts:20,gasBudgetWei:UNIT.toString(),maxTxGasWei:(UNIT/10n).toString(),minEconomicUSDT:'0',confirmations:1,maxQuoteAgeBlocks:30,maxSellFeePercent:5}};
+    const approval=await wallet.writeContract({chain:null,address:config.app.addresses.token,abi:tokenAbi,functionName:'approve',args:[config.app.sellerAddress!,BigInt(p.maxTotalInput)]});await chain.client.waitForTransactionReceipt({hash:approval});const create=await wallet.writeContract({chain:null,address:config.app.sellerAddress!,abi:executorAbi,functionName:'createTask',args:[params(p)]});const receipt=await chain.client.waitForTransactionReceipt({hash:create});const id=parseEventLogs({abi:executorAbi,eventName:'TaskCreated',logs:receipt.logs})[0]!.args.taskId;const directory=mkdtempSync(join(tmpdir(),'keeper-e2e-'));
+    const port=18787,url=`http://127.0.0.1:${port}`;let logs='';const server=spawn(process.execPath,['--import','tsx','apps/keeper/src/main.ts'],{cwd:ROOT,env:{...process.env,SELLER_MODE:'local',RPC_URLS:config.rpcUrls[0]!,ALLOWED_OWNER_ADDRESS:account.address,KEEPER_DATABASE:join(directory,'db.sqlite'),KEEPER_PORT:String(port),KEEPER_POLL_MS:'250'},stdio:['ignore','pipe','pipe']});server.stdout?.on('data',d=>logs+=String(d));server.stderr?.on('data',d=>logs+=String(d));
+    try{
+      for(let n=0;n<100;n++){try{const r=await fetch(url+'/config');if(r.ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
+      const outsider=await fetch(url+'/wallet/0x0000000000000000000000000000000000000099');expect(outsider.status).toBe(400);expect(await outsider.text()).toContain('持币钱包');
+      const beforeRegister=await (await fetch(url+`/tasks/${account.address}`)).json() as {tasks:{taskId:string;policy:unknown}[]};expect(beforeRegister.tasks.find(t=>t.taskId===id)?.policy).toBe(null);
+      const message=policyMessage(31337,config.app.sellerAddress!,id,p.policy),signature=await wallet.signMessage({message});const failed=await fetch(url+'/tasks/register',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({taskId:id,policy:p.policy,message:'wrong',signature})});expect(failed.status).toBe(400);
+      const register=await fetch(url+'/tasks/register',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({taskId:id,policy:p.policy,message,signature})});expect(register.status).toBe(200);
+      let view:any;for(let n=0;n<150;n++){view=await (await fetch(url+`/task/${id}`)).json();if(view.status>=3)break;await new Promise(r=>setTimeout(r,200));}expect(view.status,JSON.stringify(view)+' logs:'+logs).toBe(3);expect(view.residual).toBe('0');expect(view.soldInput).toBe(before.tokenBalance);expect(view.fills.length).toBeGreaterThan(1);expect(BigInt(view.receivedUSDT)).toBeGreaterThan(0n);expect(BigInt(view.gasSpentWei)).toBeGreaterThan(0n);
+      const after=await chain.wallet(account.address);expect(after.tokenBalance).toBe('0');expect(after.allowance).toBe('0');expect(BigInt(after.usdtBalance)-BigInt(before.usdtBalance)).toBe(BigInt(view.receivedUSDT));
+    }finally{server.kill('SIGTERM');await new Promise<void>(r=>server.once('exit',()=>r()));rmSync(directory,{recursive:true,force:true});}
+  },120000);
+});

@@ -1,0 +1,42 @@
+{
+  "verifiedAt": "2026-10-10T04:37:52.366Z",
+  "change": "新区块触发执行检查与页面税率刷新，忙碌时合并通知并处理最新块",
+  "config": {
+    "mode": "live",
+    "ready": true,
+    "blockPollMs": 500
+  },
+  "tax": {
+    "sellFeeAfterSync": "100",
+    "blockNumber": "126765072",
+    "blockHash": "0xeb97f74e45c93a9312c43f34800cda037f3f93136cbe5695e3ef65d65e0caf6c",
+    "timestamp": "1791607072",
+    "reason": "按当前区块预测 sync(true) 后的基础税率；额外利润税、实际到账和完整路径仍须模拟，税率上限仅由服务层执行"
+  },
+  "currentTask": {
+    "taskId": "0x1dce5c5fa67ce293bf0964af85e2ec489c543020066949966c4ee7320f4d0592",
+    "status": 1,
+    "serviceStatus": "WaitingForTax",
+    "reason": "预计同步后基础卖出税率 100% 高于上限 30%，继续监控",
+    "soldInput": "0",
+    "receivedUSDT": "0"
+  },
+  "validation": {
+    "unitTests": 136,
+    "localIntegrationTests": 2,
+    "typecheck": "passed",
+    "webBuild": "passed",
+    "integrationChainId": 31337,
+    "localSnapshotRestored": true,
+    "listenerErrorRegression": "34 个相关测试及类型检查通过，监听故障保留未知 nonce 人工暂停"
+  },
+  "limits": [
+    "HTTP 500 毫秒探测链头，RPC 延迟或慢检查可能跳过中间区块",
+    "同块去重，新任务立即首次检查",
+    "发送前实际到账、税率与 Gas 等保护保持启用",
+    "税率拆分为源码名义分配规则，利润扣费不伪装成本笔实收税率"
+  ],
+  "contractRedeployed": false,
+  "finalServiceVerifiedAt": "2026-10-10T04:38:58.485Z",
+  "servicePid": 93807
+}

@@ -1,0 +1,327 @@
+{
+  "checkedAt": "2026-10-09T16:22:31.278Z",
+  "readOnly": true,
+  "scope": "3 primary-source public endpoints; keyless JSON-RPC reads only",
+  "results": [
+    {
+      "url": "https://bsc-rpc.publicnode.com",
+      "source": "https://bsc.publicnode.com/",
+      "chain": {
+        "ok": true,
+        "value": "0x38"
+      },
+      "head": {
+        "ok": true,
+        "value": "0x78cc920"
+      },
+      "reads": [
+        {
+          "label": "head-240",
+          "blockNumber": "126666800",
+          "method": "eth_getStorageAt",
+          "ok": false,
+          "httpStatus": 403,
+          "message": "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Archive requests require a personal token. Get one at: https://www.allnodes.com/publicnode\"},\"id\":12}\n"
+        },
+        {
+          "label": "head-240",
+          "blockNumber": "126666800",
+          "method": "eth_getCode",
+          "ok": false,
+          "httpStatus": 403,
+          "message": "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Archive requests require a personal token. Get one at: https://www.allnodes.com/publicnode\"},\"id\":13}\n"
+        },
+        {
+          "label": "head-240",
+          "blockNumber": "126666800",
+          "method": "eth_getBalance",
+          "ok": false,
+          "httpStatus": 403,
+          "message": "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Archive requests require a personal token. Get one at: https://www.allnodes.com/publicnode\"},\"id\":14}\n"
+        },
+        {
+          "label": "head-240",
+          "blockNumber": "126666800",
+          "method": "eth_getTransactionCount",
+          "ok": false,
+          "httpStatus": 403,
+          "message": "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Archive requests require a personal token. Get one at: https://www.allnodes.com/publicnode\"},\"id\":15}\n"
+        },
+        {
+          "label": "head-240",
+          "blockNumber": "126666800",
+          "method": "eth_getBlockByNumber",
+          "ok": true,
+          "value": {
+            "number": "0x78cc830",
+            "hash": "0x1b4b83ec7b73185c527be92c84de940830d903cd656893f7d46680b8d3cbe06a",
+            "timestamp": "0x6ac9145a"
+          }
+        },
+        {
+          "label": "prior-failed-block",
+          "blockNumber": "126666235",
+          "method": "eth_getStorageAt",
+          "ok": false,
+          "httpStatus": 403,
+          "message": "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Archive requests require a personal token. Get one at: https://www.allnodes.com/publicnode\"},\"id\":22}\n"
+        },
+        {
+          "label": "prior-failed-block",
+          "blockNumber": "126666235",
+          "method": "eth_getCode",
+          "ok": false,
+          "httpStatus": 403,
+          "message": "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Archive requests require a personal token. Get one at: https://www.allnodes.com/publicnode\"},\"id\":23}\n"
+        },
+        {
+          "label": "prior-failed-block",
+          "blockNumber": "126666235",
+          "method": "eth_getBalance",
+          "ok": false,
+          "httpStatus": 403,
+          "message": "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Archive requests require a personal token. Get one at: https://www.allnodes.com/publicnode\"},\"id\":24}\n"
+        },
+        {
+          "label": "prior-failed-block",
+          "blockNumber": "126666235",
+          "method": "eth_getTransactionCount",
+          "ok": false,
+          "httpStatus": 403,
+          "message": "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Archive requests require a personal token. Get one at: https://www.allnodes.com/publicnode\"},\"id\":25}\n"
+        },
+        {
+          "label": "prior-failed-block",
+          "blockNumber": "126666235",
+          "method": "eth_getBlockByNumber",
+          "ok": true,
+          "value": {
+            "number": "0x78cc5fb",
+            "hash": "0x158ee0d57496749b1a868fbca64dbf08a22ee49498b71487fd0e9de369924653",
+            "timestamp": "0x6ac9135c"
+          }
+        }
+      ]
+    },
+    {
+      "url": "https://bsc.drpc.org",
+      "source": "https://blog.drpc.org/bnb-chain-rpc-infrastructure-guide/",
+      "chain": {
+        "ok": true,
+        "value": "0x38"
+      },
+      "head": {
+        "ok": true,
+        "value": "0x78cc920"
+      },
+      "reads": [
+        {
+          "label": "head-240",
+          "blockNumber": "126666800",
+          "method": "eth_getStorageAt",
+          "ok": false,
+          "httpStatus": 429,
+          "message": "{\"id\":7,\"jsonrpc\":\"2.0\",\"error\":{\"message\":\"You reached Public endpoint rate limit, please upgrade to paid plan\",\"code\":15}}"
+        },
+        {
+          "label": "head-240",
+          "blockNumber": "126666800",
+          "method": "eth_getCode",
+          "ok": true,
+          "value": {
+            "bytes": 22255,
+            "codeHash": "0x07b26d99c164f20fe0ede55326dd4c4c7d43fc6eb976650b2237732f79c0b65e"
+          }
+        },
+        {
+          "label": "head-240",
+          "blockNumber": "126666800",
+          "method": "eth_getBalance",
+          "ok": false,
+          "httpStatus": 429,
+          "message": "{\"id\":9,\"jsonrpc\":\"2.0\",\"error\":{\"message\":\"You reached Public endpoint rate limit, please upgrade to paid plan\",\"code\":15}}"
+        },
+        {
+          "label": "head-240",
+          "blockNumber": "126666800",
+          "method": "eth_getTransactionCount",
+          "ok": true,
+          "value": "0x2"
+        },
+        {
+          "label": "head-240",
+          "blockNumber": "126666800",
+          "method": "eth_getBlockByNumber",
+          "ok": false,
+          "httpStatus": 429,
+          "message": "{\"id\":11,\"jsonrpc\":\"2.0\",\"error\":{\"message\":\"You reached Public endpoint rate limit, please upgrade to paid plan\",\"code\":15}}"
+        },
+        {
+          "label": "prior-failed-block",
+          "blockNumber": "126666235",
+          "method": "eth_getStorageAt",
+          "ok": false,
+          "httpStatus": 429,
+          "message": "{\"id\":27,\"jsonrpc\":\"2.0\",\"error\":{\"message\":\"You reached Public endpoint rate limit, please upgrade to paid plan\",\"code\":15}}"
+        },
+        {
+          "label": "prior-failed-block",
+          "blockNumber": "126666235",
+          "method": "eth_getCode",
+          "ok": false,
+          "httpStatus": 429,
+          "message": "{\"id\":28,\"jsonrpc\":\"2.0\",\"error\":{\"message\":\"You reached Public endpoint rate limit, please upgrade to paid plan\",\"code\":15}}"
+        },
+        {
+          "label": "prior-failed-block",
+          "blockNumber": "126666235",
+          "method": "eth_getBalance",
+          "ok": false,
+          "httpStatus": 429,
+          "message": "{\"id\":29,\"jsonrpc\":\"2.0\",\"error\":{\"message\":\"You reached Public endpoint rate limit, please upgrade to paid plan\",\"code\":15}}"
+        },
+        {
+          "label": "prior-failed-block",
+          "blockNumber": "126666235",
+          "method": "eth_getTransactionCount",
+          "ok": false,
+          "httpStatus": 429,
+          "message": "{\"id\":30,\"jsonrpc\":\"2.0\",\"error\":{\"message\":\"You reached Public endpoint rate limit, please upgrade to paid plan\",\"code\":15}}"
+        },
+        {
+          "label": "prior-failed-block",
+          "blockNumber": "126666235",
+          "method": "eth_getBlockByNumber",
+          "ok": false,
+          "httpStatus": 429,
+          "message": "{\"id\":31,\"jsonrpc\":\"2.0\",\"error\":{\"message\":\"You reached Public endpoint rate limit, please upgrade to paid plan\",\"code\":15}}"
+        }
+      ]
+    },
+    {
+      "url": "https://rpc-bnb.blockmachine.io",
+      "source": "https://docs.bnbchain.org/bnb-smart-chain/developers/json_rpc/json-rpc-endpoint/",
+      "chain": {
+        "ok": true,
+        "value": "0x38"
+      },
+      "head": {
+        "ok": true,
+        "value": "0x78cc920"
+      },
+      "reads": [
+        {
+          "label": "head-240",
+          "blockNumber": "126666800",
+          "method": "eth_getStorageAt",
+          "ok": true,
+          "value": "0x6ac90ebf000000029a52f834c38cc8f4e2fb0000000091900a9573bcd64f2261"
+        },
+        {
+          "label": "head-240",
+          "blockNumber": "126666800",
+          "method": "eth_getCode",
+          "ok": true,
+          "value": {
+            "bytes": 22255,
+            "codeHash": "0x07b26d99c164f20fe0ede55326dd4c4c7d43fc6eb976650b2237732f79c0b65e"
+          }
+        },
+        {
+          "label": "head-240",
+          "blockNumber": "126666800",
+          "method": "eth_getBalance",
+          "ok": true,
+          "value": "0x0"
+        },
+        {
+          "label": "head-240",
+          "blockNumber": "126666800",
+          "method": "eth_getTransactionCount",
+          "ok": true,
+          "value": "0x2"
+        },
+        {
+          "label": "head-240",
+          "blockNumber": "126666800",
+          "method": "eth_getBlockByNumber",
+          "ok": true,
+          "value": {
+            "number": "0x78cc830",
+            "hash": "0x1b4b83ec7b73185c527be92c84de940830d903cd656893f7d46680b8d3cbe06a",
+            "timestamp": "0x6ac9145a"
+          }
+        },
+        {
+          "label": "prior-failed-block",
+          "blockNumber": "126666235",
+          "method": "eth_getStorageAt",
+          "ok": true,
+          "value": "0x6ac90ebf000000029a52f834c38cc8f4e2fb0000000091900a9573bcd64f2261"
+        },
+        {
+          "label": "prior-failed-block",
+          "blockNumber": "126666235",
+          "method": "eth_getCode",
+          "ok": true,
+          "value": {
+            "bytes": 22255,
+            "codeHash": "0x07b26d99c164f20fe0ede55326dd4c4c7d43fc6eb976650b2237732f79c0b65e"
+          }
+        },
+        {
+          "label": "prior-failed-block",
+          "blockNumber": "126666235",
+          "method": "eth_getBalance",
+          "ok": true,
+          "value": "0x0"
+        },
+        {
+          "label": "prior-failed-block",
+          "blockNumber": "126666235",
+          "method": "eth_getTransactionCount",
+          "ok": true,
+          "value": "0x2"
+        },
+        {
+          "label": "prior-failed-block",
+          "blockNumber": "126666235",
+          "method": "eth_getBlockByNumber",
+          "ok": true,
+          "value": {
+            "number": "0x78cc5fb",
+            "hash": "0x158ee0d57496749b1a868fbca64dbf08a22ee49498b71487fd0e9de369924653",
+            "timestamp": "0x6ac9135c"
+          }
+        }
+      ]
+    }
+  ],
+  "localFork": {
+    "readOnly": true,
+    "source": "https://rpc-bnb.blockmachine.io",
+    "blockNumber": "126666235",
+    "blockHash": "0x158ee0d57496749b1a868fbca64dbf08a22ee49498b71487fd0e9de369924653",
+    "storage": "0x6ac90ebf000000029a52f834c38cc8f4e2fb0000000091900a9573bcd64f2261",
+    "codeHash": "0x07b26d99c164f20fe0ede55326dd4c4c7d43fc6eb976650b2237732f79c0b65e",
+    "codeBytes": 22255,
+    "tokenBalance": "0x0",
+    "tokenNonce": "0x2",
+    "checks": {
+      "chain56": true,
+      "fixedBlock": true,
+      "blockHashMatchesSource": true,
+      "byHashMatches": true,
+      "storageMatches": true,
+      "codeHashMatches": true
+    }
+  },
+  "conclusion": {
+    "usableForTestedFixedBlockFork": "https://rpc-bnb.blockmachine.io",
+    "limitations": [
+      "This is a bounded read-only spot check, not a production availability or full-history archive SLA.",
+      "No transactions, signatures, user keys, or environment files were used."
+    ],
+    "localAnvilStopped": true
+  }
+}

@@ -1,0 +1,58 @@
+{
+  "checkedAt": "2026-10-10T02:20:44.426Z",
+  "configuration": {
+    "mode": "live",
+    "ready": true,
+    "chainId": 56,
+    "seller": "0xd072DF01c890695df38C42d5805E951a1b3dE07b",
+    "executor": "0x311349ab245f51eb2B97E9b85B2fa0bbd20211DD",
+    "missing": []
+  },
+  "health": {
+    "mode": "live",
+    "ready": true,
+    "missing": [],
+    "healthy": 2,
+    "configured": 2
+  },
+  "tax": {
+    "sellFeeAfterSync": "100",
+    "blockNumber": "126746790",
+    "blockHash": "0x6150631906d1a8591f38860bc8d864d04a86437319e4adb6b18737028dc35ec7",
+    "timestamp": "1791598843",
+    "reason": "按当前区块预测 sync(true) 后的基础税率；额外利润税、实际到账和完整路径仍须模拟，税率上限仅由服务层执行"
+  },
+  "tasks": [
+    {
+      "id": "0xf1119b83705b8094f457abc89f1b9909f8c07bdff0809f864dca9801ab4d9651",
+      "status": 6,
+      "windowExpired": true,
+      "serviceStatus": "WindowExpired",
+      "soldInput": "0",
+      "receivedUSDT": "0",
+      "gasSpentWei": "0",
+      "attempts": 0
+    },
+    {
+      "id": "0xa4b5f1cb52f431d6df296f9c462529e468d35cbbe7da6faac6f17cbe79b34ed8",
+      "status": 5,
+      "windowExpired": false,
+      "serviceStatus": "Closed",
+      "soldInput": "0",
+      "receivedUSDT": "0",
+      "gasSpentWei": "0",
+      "attempts": 0
+    }
+  ],
+  "newTaskCreatedByAgent": false,
+  "protectionsRetained": [
+    "税率上限",
+    "实际到账底线",
+    "监控时间窗",
+    "有限授权与累计输入上限",
+    "Gas 总预算与单笔上限",
+    "发送前完整调用检查",
+    "回执对账与重复交易防护"
+  ],
+  "notes": "用户明确要求开始正式使用后开启主网服务；新任务与服务条件仍需由用户通过钱包确认。"
+}

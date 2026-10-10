@@ -1,0 +1,1 @@
+{"sellFeeAfterSync":"100","blockNumber":"126742319","blockHash":"0xd0494f8e60979e373035cb6a06d29bfcb5cf7188c381f14fd80262573b847849","timestamp":"1791596831","reason":"按当前区块预测 sync(true) 后的基础税率；额外利润税、实际到账和完整路径仍须模拟，税率上限仅由服务层执行"}

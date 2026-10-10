@@ -1,0 +1,67 @@
+{
+  "checkedAt": "2026-10-10T02:12:44.979Z",
+  "verification": {
+    "unitTestsPassed": 126,
+    "localIntegrationTestsPassed": 2,
+    "localIntegrationChainId": 31337,
+    "localSnapshotRestored": true,
+    "typecheck": "passed",
+    "contractSourceChanged": false,
+    "previousContractTestsPassed": 37
+  },
+  "fixes": [
+    "禁止只读或配置不完整时恢复广播",
+    "已过有效期、任务到期或结束、nonce 被未知交易消费时不重播",
+    "恢复交易校验网络、收款合约、交易哈希、nonce 和完整卖出参数",
+    "规范回执的成交事件异常时保留实际 Gas、暂停新交易、不重播",
+    "仅接受既定卖出合约和 owner 的唯一匹配成交事件",
+    "最新链头落后于模拟区块时停止签名",
+    "金额、额度之和、单价的 uint256 溢出检查及单笔预算不得大于总预算"
+  ],
+  "configuration": {
+    "mode": "read-only",
+    "ready": true,
+    "missing": [],
+    "chainId": 56
+  },
+  "tax": {
+    "sellFeeAfterSync": "100",
+    "blockNumber": "126745727",
+    "blockHash": "0x5af1a3aa17fccda10b8e6f861d00f26081c74379f0d68980063bf4ccbf1f76b4",
+    "timestamp": "1791598365",
+    "reason": "按当前区块预测 sync(true) 后的基础税率；额外利润税、实际到账和完整路径仍须模拟，税率上限仅由服务层执行"
+  },
+  "tasks": [
+    {
+      "id": "0xf1119b83705b8094f457abc89f1b9909f8c07bdff0809f864dca9801ab4d9651",
+      "status": 6,
+      "chainStatus": 1,
+      "windowExpired": true,
+      "serviceStatus": "WindowExpired",
+      "soldInput": "0",
+      "receivedUSDT": "0",
+      "gasSpentWei": "0",
+      "attempts": 0
+    },
+    {
+      "id": "0xa4b5f1cb52f431d6df296f9c462529e468d35cbbe7da6faac6f17cbe79b34ed8",
+      "status": 5,
+      "chainStatus": 5,
+      "windowExpired": false,
+      "serviceStatus": "Closed",
+      "soldInput": "0",
+      "receivedUSDT": "0",
+      "gasSpentWei": "0",
+      "attempts": 0
+    }
+  ],
+  "mainnetTransactionBroadcast": false,
+  "mainnetSuccessfulSaleVerified": false,
+  "limits": [
+    "基础税率上限由服务发送前执行，链上保护每笔实际 USDT 底线",
+    "代币资金池关联实现源码未验证，测试资产成功不能证明真实代币必定成交",
+    "持币与执行钱包共用私钥，执行进程具备该钱包完整签名权限",
+    "已提交但回执未知的交易仍保留跟踪，不自动释放 nonce 或另发交易",
+    "实际主网使用需要新建有效窗口任务并签署条件，当前保持只读"
+  ]
+}

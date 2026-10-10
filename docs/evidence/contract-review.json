@@ -1,0 +1,99 @@
+{
+  "kind": "limited-final-financial-contract-read-only-review",
+  "dateBeijing": "2026-10-09",
+  "owner": "0x311349ab245f51eb2B97E9b85B2fa0bbd20211DD",
+  "signed": false,
+  "broadcast": false,
+  "zeroBNBSpent": true,
+  "source": {
+    "url": "https://bscscan.com/address/0x63d1eacebb70bbbf0641e7c88e9099301bba3688#code",
+    "verification": "Exact Match",
+    "characters": 66679,
+    "lines": 1834,
+    "evidence": "Parent agent obtained complete public source through read-only Chrome DOM; relevant line excerpts were independently reconciled with local implementation.",
+    "localEvidence": "docs/evidence/NBDAOToken.verified.sol.txt"
+  },
+  "localArtifact": {
+    "creationHash": "0x020fac725b8fa210b9e187cbdfbdd3cc7527b90df51610fcf8710ea86d1b8056",
+    "creationBytes": 8716,
+    "runtimeBytes": 6951,
+    "compiler": "0.8.30+commit.73712a01",
+    "evmVersion": "paris",
+    "optimizerRuns": 200,
+    "viaIR": true,
+    "all14MetadataSourceHashesMatch": true,
+    "all16ExportedFunctionSelectorsMatch": true,
+    "constructor": "nonpayable NBDAOSeller(), zero arguments",
+    "immutableFields": [
+      "token",
+      "usdt",
+      "pair",
+      "router",
+      "factory",
+      "tokenUnit=1e18",
+      "deploymentChainId=56"
+    ],
+    "runtimeNote": "7 immutable groups must be masked or patched before runtime comparison; getters are independently checked."
+  },
+  "emptyDeployment": {
+    "reviewResult": "No verified source-level funds-transfer obstruction for empty deployment.",
+    "value": "0",
+    "permittedScope": "Only deploy immutable Seller contract; no token approval, task creation, Keeper registration or live-mode activation.",
+    "deployerPrivilege": "None: no global owner/admin, upgrades, withdrawal or fee destination control. Each task owner is createTask caller.",
+    "constructorEvidence": "SellerCore.sol:77-85 checks chain56, code existence, token order, pair/factory/router/basePair and 18 decimals using view/static calls. It never transfers user assets or calls mining/sync/processFee.",
+    "walletConfirmation": "MetaMask final financial signature is performed by the human user; no agent signature or broadcast.",
+    "requestFeeCapBNB": "0.00015",
+    "feeNote": "The frontend bounds requested gasLimit*gasPrice and value0; human changes in MetaMask can exceed the prepared request budget."
+  },
+  "sellerPath": {
+    "code": "packages/contracts/src/SellerCore.sol:109-145",
+    "funds": "safeTransferFrom(original owner,fixed pair,amountIn), then pair.swap USDT directly to owner; no intermediate custody.",
+    "naturalTokenOrder": "Source1297: reward(from/to) then sync(true), getSellFee, pool burn/sync, profit/base fees and processFee, final remainder into pair. Seller reads reserves only after transfer finishes.",
+    "inputAccounting": "soldInput tracks gross wallet debit; actualInput=post-transfer pair balance-reserve, bounded <=gross input. Small prior pool surplus can participate without altering gross accounting.",
+    "outputAccounting": "USDT before/after pair.swap excludes earlier fee/referral income. Requested minimum must be positive and >=ceil(grossInput*fixed price/1e18). Failure reverts current chunk atomically; gas may still be spent in real transactions.",
+    "replayAndReentrancy": "Task ID includes chain/contract/owner/nonce, active task/status and expected chunk index enforced, cumulative/maxChunk/window/gasPrice limits, global nonReentrant on state-changing methods.",
+    "partialExecution": "Prior successful chunks remain completed; later failure rolls back only current transaction. Fresh pending rewards remain visible as residual; cap/chunk/dust stop is explicitly labelled."
+  },
+  "externalDependency": {
+    "sourceEvidence": [
+      "1131 shareFeeTeams",
+      "1272 pending",
+      "1282 reward",
+      "1446 getSellFee",
+      "1481 processFee",
+      "1557 sync"
+    ],
+    "detail": "processFee uses V2/V3 Routers, AutoSwap, BNB recipients and IDOFundPool; it can alter reserves and incur dependency failures. Fund implementation public source unavailable; not declared audited.",
+    "snapshotTaxNote": "Getter tax100 is a snapshot. sync(true) runs before actual fee determination and has separate reserve timestamp/day and block timestamp/mining-day logic; never promise next sell tax from prior getter alone."
+  },
+  "tests": {
+    "contractMock": "37 passed, 0 failed; includes 256 fuzz iterations, true authorized-keeper reentrancy, tail pending, minOut rollback, allowance rollback, stale task/chunk, nested reserve update, failure/partial/cap/dust cases.",
+    "realFork": "docs/evidence/fork-poc.json remains completed=false/missing trie node; not a successful real Seller-path proof.",
+    "realOwnerRouter": "docs/evidence/owner-router-proof.json: block126661923 1 NBDAO existing allowance, both eth_call and estimateGas revert PancakeLibrary: INSUFFICIENT_INPUT_AMOUNT. Snapshot amount ratio0 passes token quantity limit. No state override, signatures, broadcast or gas spent."
+  },
+  "keeperBoundaries": {
+    "fees": "Current send re-simulates and estimates gas, limits per-tx and cumulative budget, includes failed receipt gas; inconclusive receipt checks preserve cost and pause new sends.",
+    "nonce": "Same pending signed transaction is persisted and recovered; no automated fresh nonce or fee bump while pending.",
+    "smallRealTest": "Not approved by current Router baseline. If separately revisited, require true owner/current complete Seller-path simulation, finite tiny allowance/input, maxChunks1/maxAttempts1, explicit minimum and fee cap; no blind funded retries."
+  },
+  "deployUiReview": {
+    "files": [
+      "apps/web/src/app/deploy/page.tsx",
+      "apps/web/src/lib/deployment.ts",
+      "apps/web/src/lib/deployment-server.ts",
+      "apps/web/src/app/api/deploy/route.ts",
+      "apps/web/src/app/api/deploy/receipt/route.ts"
+    ],
+    "result": "No verified funds-risk blocker for current empty deploy request.",
+    "checks": "Fixed bytecode hash/value0/nonce, current wallet+chain, fresh constructor call+gas estimate, strict durable request marker before wallet call, unknown errors keep record/no auto-resend, read-only receipt checks from/input/value/nonce/chain, canonical3 confirmations, normalized runtime plus full preflight runtime hash and7 getters.",
+    "nonblocking": "Manual useHash recovery currently may overwrite confirmed/reverted record stage with submitted after verification; receipt/code verification still persists in UI and existing record prevents all repeat deploys. This is a persistence label issue, not a broadcast/funds bypass."
+  },
+  "conclusion": "Empty deployment can be prepared within capped request and handed off for user MetaMask confirmation. Current small real sale must remain stopped: the true-owner Router baseline fails and true Seller fork path is not validated. No actual transaction was signed or broadcast in this review.",
+  "handoff": {
+    "stage": "MetaMask contract-creation confirmation prepared by parent agent",
+    "evidence": "apps/web/qa/metamask-deployment-pending.jpg",
+    "userPerformsFinalConfirmation": true,
+    "signed": false,
+    "broadcast": false
+  }
+}

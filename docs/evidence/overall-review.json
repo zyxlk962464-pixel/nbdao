@@ -1,0 +1,55 @@
+{
+  "checkedAt": "2026-10-10T01:58:50.778Z",
+  "configuration": {
+    "mode": "read-only",
+    "ready": true,
+    "missing": [],
+    "chainId": 56
+  },
+  "tax": {
+    "sellFeeAfterSync": "100",
+    "blockNumber": "126743873",
+    "blockHash": "0xe5a1cc79c64cfa7bf135e13dbf7e6978c739dacc79f6f01edb3bfcb16e451fe7",
+    "timestamp": "1791597531",
+    "reason": "按当前区块预测 sync(true) 后的基础税率；额外利润税、实际到账和完整路径仍须模拟，税率上限仅由服务层执行"
+  },
+  "tasks": [
+    {
+      "taskId": "0xf1119b83705b8094f457abc89f1b9909f8c07bdff0809f864dca9801ab4d9651",
+      "status": 6,
+      "chainStatus": 1,
+      "windowExpired": true,
+      "serviceStatus": "WindowExpired",
+      "soldInput": "0",
+      "receivedUSDT": "0",
+      "gasSpentWei": "0",
+      "attempts": 0
+    },
+    {
+      "taskId": "0xa4b5f1cb52f431d6df296f9c462529e468d35cbbe7da6faac6f17cbe79b34ed8",
+      "status": 5,
+      "chainStatus": 5,
+      "windowExpired": false,
+      "serviceStatus": "Closed",
+      "soldInput": "0",
+      "receivedUSDT": "0",
+      "gasSpentWei": "0",
+      "attempts": 0
+    }
+  ],
+  "verification": {
+    "unitTestsPassed": 109,
+    "localIntegrationTestsPassed": 2,
+    "contractTestsPassed": 37,
+    "typecheck": "passed",
+    "webProductionBuild": "passed",
+    "mainnetTransactionBroadcast": false,
+    "mainnetSuccessfulSaleVerified": false
+  },
+  "fixes": [
+    "Final full call, tax, gas, oracle and account reads run concurrently on a fresh block.",
+    "Signed block-age ceiling applies to newly revalidated execution proof; stale proposals are never used without this revalidation.",
+    "Local signing uses already verified explicit chain ID and avoids an extra wallet-client RPC.",
+    "Direct send is disabled in read-only or unready configuration."
+  ]
+}

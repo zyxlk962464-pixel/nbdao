@@ -1,0 +1,17 @@
+node_modules/
+.next/
+.tools/
+.env
+.env.*
+!.env.example
+data/
+*.sqlite
+*.sqlite-*
+*.sqlite.*
+packages/contracts/out/
+packages/contracts/cache/
+packages/contracts/broadcast/
+apps/web/qa/
+coverage/
+*.log
+*.tsbuildinfo

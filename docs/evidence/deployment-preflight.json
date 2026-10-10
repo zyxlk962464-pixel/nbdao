@@ -1,0 +1,24 @@
+{
+  "kind": "bsc-deployment-read-only-preflight",
+  "dateBeijing": "2026-10-09",
+  "broadcast": false,
+  "chainId": 56,
+  "constructor": "NBDAOSeller()",
+  "identityCheckBlock": "126661426",
+  "identityCheckBlockHash": "0xd15ef9ec536ef43c258db7df109fb9ae0e6081b2cc298070bb8daf984d5063da",
+  "dependencyFingerprint": "0x72b99fbff9ce3add76cf0c0e515a8ffd124eacec8c48add229ad63e0052195a8",
+  "bytecodeHash": "0x020fac725b8fa210b9e187cbdfbdd3cc7527b90df51610fcf8710ea86d1b8056",
+  "constructorCall": "success",
+  "observedBlockDuringEstimate": "126661426",
+  "estimatedGas": "1643809",
+  "gasPriceWei": "50000000",
+  "estimatedFeeBNB": "0.00008219045",
+  "gasLimitWith20PercentMargin": "1972571",
+  "with20PercentGasMarginBNB": "0.00009862855",
+  "fixedDeploymentFeeCapBNB": "0.00015",
+  "limitations": [
+    "Gas 是该次读取的估算，广播前需重新估算并检查实际部署钱包余额。",
+    "未签名、未广播、没有主网合约地址。",
+    "此预检不代表真实 NBDAO 完整卖出验证通过；归档 RPC 与实际持币钱包的分叉验证仍待完成。"
+  ]
+}
