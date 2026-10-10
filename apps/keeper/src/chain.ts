@@ -1,10 +1,16 @@
-import { createPublicClient, http, keccak256, parseAbi, type Address, type Hex } from 'viem';
+import { createPublicClient, fallback, http, keccak256, parseAbi, type Address, type Hex } from 'viem';
 import { tokenAbi,pairAbi,routerAbi,factoryAbi,executorAbi,IMPLEMENTATION_SLOT,UNIT,type WalletSnapshot,type PriceSnapshot,type SellTaxSnapshot,type TaskView,type PlanInput } from '../../../packages/shared/src/index.js';
 import { existsSync,readFileSync } from 'node:fs';
 import type { Runtime } from './config.js';
 import type { Store } from './store.js';
 import { poolSpotPrice } from './price.js';
 export const publicClient=(url:string)=>createPublicClient({pollingInterval:url.startsWith('http://127.0.0.1:')?100:4000,transport:http(url,{timeout:15000,retryCount:1})});
+/** Read failures can use another configured node. JSON-RPC batching does not change eth_call's sender or block. */
+export function readClient(urls:string[]){
+  if(!urls.length)throw new Error('没有配置读取 RPC');
+  return createPublicClient({pollingInterval:urls[0]!.startsWith('http://127.0.0.1:')?100:4000,
+    transport:fallback(urls.map(url=>http(url,{timeout:15000,retryCount:0,batch:{wait:5,batchSize:20}})),{rank:false,retryCount:1})});
+}
 export const params=(p:PlanInput)=>({executor:p.executor,notBefore:BigInt(p.notBefore),expiresAt:BigInt(p.expiresAt),maxChunks:p.maxChunks,maxTotalInput:BigInt(p.maxTotalInput),minUSDTPerToken:BigInt(p.minUSDTPerToken),maxDustTokens:BigInt(p.maxDustTokens),maxGasPrice:BigInt(p.maxGasPrice)});
 export function message(e:unknown){let s=e instanceof Error?e.message:String(e);s=s.replace(/https?:\/\/[^\s)]+/g,'[RPC]').replace(/0x[0-9a-fA-F]{64}/g,'[hash]');return s.slice(0,1200);}
 export type SellFeeState={timestamp:bigint;reserveUSDT:bigint;reserveToken:bigint;poolTimestamp:bigint;lastDayReserves:readonly [bigint,bigint,bigint,bigint];lastMiningDay:bigint;totalPower:bigint;actualUSDTBalance:bigint};
@@ -34,7 +40,7 @@ export function sellFeeGateReason(max:number|undefined,p:SellTaxSnapshot){
 }
 export class Chain {
   private taxCache:{key:string;value:Promise<SellTaxSnapshot>}|undefined;
-  client; constructor(public config:Runtime){this.client=publicClient(config.rpcUrls[0]!);}
+  client; constructor(public config:Runtime){this.client=readClient(config.rpcUrls);}
   async health(){const ids=await Promise.allSettled(this.config.rpcUrls.map(async url=>{const c=publicClient(url);const [chainId,b]=await Promise.all([c.getChainId(),c.getBlock()]);if(chainId!==this.config.app.chainId)throw new Error('RPC 网络错误');return {chainId,number:b.number!,timestamp:b.timestamp};}));const good=ids.flatMap(r=>r.status==='fulfilled'?[r.value]:[]);if(!good.length)throw new Error('没有可用 RPC');const max=good.reduce((m,b)=>b.number>m?b.number:m,0n);return {healthy:good.filter(b=>max-b.number<=5n).length,configured:ids.length};}
   async price():Promise<PriceSnapshot>{
     const [chainId,b]=await Promise.all([this.client.getChainId(),this.client.getBlock()]);
