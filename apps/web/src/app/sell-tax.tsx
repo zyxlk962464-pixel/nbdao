@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { createPublicClient, http } from 'viem';
 import { beijingLabel, type SellTaxSnapshot } from '@nbdao/shared';
+import TaxHistoryPanel from './tax-history';
 
 const stale = (timestamp: string) => !/^\d+$/.test(timestamp) || Number(timestamp) * 1000 < Date.now() - 30000 || Number(timestamp) * 1000 > Date.now() + 10000;
 
@@ -54,14 +55,16 @@ export default function SellTax({ threshold, chainId, readOnly, rpcUrl, blockPol
     <div className="sell-tax-meta"><span>{snapshot ? `快照 #${snapshot.blockNumber} · ${beijingLabel(snapshot.timestamp)}` : failed ? '读取失败或快照过期，不采用旧税率' : '读取当前链上状态'}</span><span>{readOnly ? '只读观察 · ' : ''}新区块刷新</span></div>
     {snapshot && fee === null && snapshot.reason && <p>{snapshot.reason}</p>}
     <p>自然同步后的预计基础税，不含利润扣费；交易入块时仍可变化，达到税率目标不代表实际到账达标。</p>
+    <TaxHistoryPanel />
     {chainId === 56 && <details className="tax-breakdown" open data-testid="tax-breakdown">
       <summary>卖出扣费组成 <span>规则与计算基数</span></summary>
       <div className="tax-cost-group"><div className="tax-cost-heading"><strong>基础卖出税</strong><span>按本笔卖出量计算</span></div>
         <dl className="tax-cost-list" data-testid="basic-tax-parts">
           <div><dt>挖矿奖励</dt><dd>{basicFixed}</dd></div><div><dt>团队分配</dt><dd>{basicFixed}</dd></div>
-          <div><dt>资金池名义份额</dt><dd>{basicFixed}</dd></div><div><dt>高税部分</dt><dd data-testid="high-tax-part">{highRate}</dd></div>
+          <div><dt>资金池名义份额</dt><dd>{basicFixed}</dd></div><div><dt>动态高税附加部分</dt><dd data-testid="high-tax-part">{highRate}</dd></div>
         </dl>
         <p>以上是基础税内部的名义拆分，已包含在上方 {fee === null ? '待确认的基础税' : `${fee}% 基础税`} 中，不会再加收一次。实际按整数金额及内部换币结果分配。</p>
+        <p>高税部分等于基础税超过 3% 的部分：例如基础税 100% 时为 97%，基础税 20% 时为 17%。这部分换成 USDT 后统一支付给代币的高税收款地址（highFeeAddress）；代币源码未将它再拆成团队税或基金会税，收款地址可由代币管理员修改。利润扣费另计。</p>
       </div>
       <div className="tax-cost-group"><div className="tax-cost-heading"><strong>利润扣费</strong><span>利润计费部分的 25%</span></div>
         <dl className="tax-cost-list"><div><dt>挖矿奖励</dt><dd>5%</dd></div><div><dt>基金会</dt><dd>5%</dd></div><div><dt>团队分配</dt><dd>10%</dd></div><div><dt>资金池名义份额</dt><dd>5%</dd></div></dl>

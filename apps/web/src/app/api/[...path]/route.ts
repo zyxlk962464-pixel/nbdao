@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { beginApiRequest, boundedBody } from '@/lib/api-security';
 
 export const dynamic = 'force-dynamic';
-const allowedRead = /^(?:config|price|tax|wallet\/0x[a-fA-F0-9]{40}|tasks\/0x[a-fA-F0-9]{40}|task\/0x[a-fA-F0-9]{64})$/;
+const allowedRead = /^(?:config|price|tax(?:\/history)?|wallet\/0x[a-fA-F0-9]{40}|tasks\/0x[a-fA-F0-9]{40}|task\/0x[a-fA-F0-9]{64})$/;
 const allowedWrite = /^(?:quote|tasks\/register)$/;
 
 async function proxy(req: NextRequest, context: { params: Promise<{ path: string[] }> }) {

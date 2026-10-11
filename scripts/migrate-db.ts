@@ -4,7 +4,7 @@ import { chmodSync,existsSync,mkdirSync,readFileSync,renameSync,rmSync,writeFile
 import { dirname,resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-const tables=['tasks','attempts','quotes','audit','leases'] as const;
+const tables=['tasks','attempts','quotes','audit','leases','tax_history'] as const;
 type Summary={counts:Record<string,number>;pending:number;gasSpentWei:string;activeLeases:number};
 type Manifest={version:1;createdAt:string;sha256:string;cutoverReady:boolean;summary:Summary};
 function hash(path:string){return createHash('sha256').update(readFileSync(path)).digest('hex');}
@@ -12,7 +12,7 @@ function inspect(db:DatabaseSync):Summary{
   const integrity=db.prepare('PRAGMA integrity_check').get() as {integrity_check:string};
   if(integrity.integrity_check!=='ok')throw new Error('SQLite 完整性检查失败');
   const counts:Record<string,number>={};
-  for(const table of tables)counts[table]=Number(db.prepare(`SELECT count(*) AS n FROM ${table}`).get()!.n);
+  for(const table of tables)counts[table]=table==='tax_history'&&!db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='tax_history'").get()?0:Number(db.prepare(`SELECT count(*) AS n FROM ${table}`).get()!.n);
   const pending=Number(db.prepare("SELECT count(*) AS n FROM attempts WHERE state IN ('signed','pending','mined')").get()!.n);
   const gasSpentWei=db.prepare('SELECT gasWei FROM attempts').all().reduce((total,row)=>total+BigInt(String(row.gasWei)),0n).toString();
   const activeLeases=Number(db.prepare('SELECT count(*) AS n FROM leases WHERE expires>?').get(Date.now())!.n);
@@ -54,7 +54,7 @@ export async function restoreDatabase(sourcePath:string,targetPath:string){
   const db=new DatabaseSync(source,{readOnly:true}),temporary=target+'.'+randomUUID()+'.tmp';
   try{
     const expected=inspect(db);
-    if(expected.pending!==manifest.summary.pending||expected.gasSpentWei!==manifest.summary.gasSpentWei||tables.some(t=>expected.counts[t]!==manifest.summary.counts[t]))throw new Error('迁移清单与数据库记录不符');
+    if(expected.pending!==manifest.summary.pending||expected.gasSpentWei!==manifest.summary.gasSpentWei||tables.some(t=>expected.counts[t]!== (manifest.summary.counts[t]??0)))throw new Error('迁移清单与数据库记录不符');
     await backup(db,temporary);
     const copy=new DatabaseSync(temporary);
     try{copy.exec('PRAGMA journal_mode=DELETE; DELETE FROM leases;');const after=inspect(copy);if(after.pending!==expected.pending||after.gasSpentWei!==expected.gasSpentWei)throw new Error('导入交易与 Gas 记录校验失败');}finally{copy.close();}

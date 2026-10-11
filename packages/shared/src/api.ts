@@ -23,6 +23,15 @@ export type PriceSnapshot = {
 export type SellTaxSnapshot = {
   sellFeeAfterSync: string|null; blockNumber: string; blockHash: Hex; timestamp: string; reason: string;
 };
+export type TaxHistoryRecord = {
+  observedAt: number; feePercent: number|null; blockNumber: string|null;
+  blockHash: Hex|null; timestamp: string|null; reason: string;
+};
+export type TaxHistory = {
+  records: TaxHistoryRecord[]; firstRecordedAt: number|null;
+  minPercent: number|null; maxPercent: number|null; retentionDays: number;
+  recorder: { running: boolean; lastCheckedAt: number|null; error: string|null };
+};
 export type WalletSnapshot = {
   owner: Address; tokenBalance: string; pending: string; usdtBalance: string;
   bnbBalance: string; allowance: string; blockNumber: string; blockHash: Hex;

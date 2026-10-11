@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Store,type Attempt } from '../apps/keeper/src/store.ts';
 import { exportDatabase,restoreDatabase } from '../scripts/migrate-db.ts';
+import { BSC } from '../packages/shared/src/index.ts';
 
 const id=`0x${'12'.repeat(32)}` as const,owner='0x0000000000000000000000000000000000000011';
 const policy={slippageBps:100,maxAttempts:10,gasBudgetWei:'1000',maxTxGasWei:'100',minEconomicUSDT:'0',confirmations:3,maxQuoteAgeBlocks:3,maxSellFeePercent:30};
@@ -18,6 +19,14 @@ function fixture(){
   store.close();return {source,snapshot,target};
 }
 describe('SQLite cutover preserves execution history',()=>{
+  it('backs up recorded taxes and refuses to overwrite a target containing only tax history',async()=>{
+    const f=fixture(),source=new Store(f.source),now=Date.now();
+    source.recordTax(56,BSC.token,{sellFeeAfterSync:'20',blockNumber:'100',blockHash:`0x${'16'.repeat(32)}`,timestamp:String(Math.floor(now/1000)),reason:'snapshot'});source.close();
+    await exportDatabase(f.source,f.snapshot);await restoreDatabase(f.snapshot,f.target);
+    const target=new Store(f.target);try{expect(target.taxHistory(56,BSC.token).minPercent).toBe(20);}finally{target.close();}
+    const other=f.target+'.history-only',existing=new Store(other);existing.recordTax(56,BSC.token,null,'Unavailable');existing.close();
+    await expect(restoreDatabase(f.snapshot,other)).rejects.toThrow('已有记录');
+  });
   it('retains frozen policies, pending signatures, nonces and paid Gas; re-import cannot reset them',async()=>{
     const f=fixture(),manifest=await exportDatabase(f.source,f.snapshot);expect(manifest.cutoverReady).toBe(true);expect(manifest.summary.pending).toBe(1);expect(manifest.summary.gasSpentWei).toBe('14');
     await restoreDatabase(f.snapshot,f.target);const store=new Store(f.target);

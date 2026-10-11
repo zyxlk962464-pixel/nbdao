@@ -9,8 +9,10 @@ import { Worker } from './worker.js';
 import { plan,policy,taskId } from './validation.js';
 import { assertOwnerAllowed,assertTaskAllowed } from './access.js';
 import { ReadGate } from './read-gate.js';
+import { TaxRecorder } from './tax-recorder.js';
 process.umask(0o077);
 const config=runtime(),store=new Store(config.database),chain=new Chain(config),optimizer=new Optimizer(config,chain),worker=new Worker(config,chain,optimizer,store);
+const taxRecorder=new TaxRecorder(config,chain,store);
 const rates=new Map<string,{start:number;count:number}>();
 const reads=new ReadGate();
 const server=createServer(async(req,res)=>{
@@ -26,6 +28,7 @@ const server=createServer(async(req,res)=>{
     else if(req.method==='GET'&&url.pathname==='/status')result={status:'ok',mode:config.app.mode,ready:config.app.ready};
     else if(req.method==='GET'&&url.pathname==='/price')result=await reads.run('price',()=>chain.price());
     else if(req.method==='GET'&&url.pathname==='/tax')result=await reads.run('tax',()=>chain.tax());
+    else if(req.method==='GET'&&url.pathname==='/tax/history')result={...store.taxHistory(config.app.chainId,config.app.addresses.token),recorder:taxRecorder.status()};
     else if(req.method==='GET'&&url.pathname==='/health'){result={mode:config.app.mode,ready:config.app.ready,missing:config.app.missing,...await chain.health()};}
     else if(req.method==='GET'&&parts[0]==='wallet'&&isAddress(parts[1]??'')){assertOwnerAllowed(config,parts[1]!);result=await reads.run(url.pathname,()=>chain.wallet(parts[1] as Address));}
     else if(req.method==='GET'&&parts[0]==='task'){const id=taskId(parts[1]);result=await reads.run(url.pathname,async()=>{assertOwnerAllowed(config,(await chain.rawTask(id)).owner);return chain.view(id,store);});}
@@ -37,6 +40,6 @@ const server=createServer(async(req,res)=>{
     res.end(stringify(result));
   }catch(e){if(res.statusCode===200)res.statusCode=400;res.end(stringify({error:message(e)}));}
 });
-server.listen(config.port,config.host,()=>{console.log(`Keeper http://${config.host}:${config.port} · ${config.app.mode} · ${config.app.ready?'配置就绪':config.app.missing.join('、')}`);worker.start();});
+server.listen(config.port,config.host,()=>{console.log(`Keeper http://${config.host}:${config.port} · ${config.app.mode} · ${config.app.ready?'配置就绪':config.app.missing.join('、')}`);worker.start();taxRecorder.start();});
 let stopping=false;
-for(const signal of ['SIGINT','SIGTERM'] as const)process.on(signal,()=>{if(stopping)return;stopping=true;optimizer.close();const stopped=worker.stop();server.close(()=>{void stopped.then(()=>{store.close();process.exit(0);});});});
+for(const signal of ['SIGINT','SIGTERM'] as const)process.on(signal,()=>{if(stopping)return;stopping=true;optimizer.close();const stopped=Promise.all([worker.stop(),taxRecorder.stop()]);server.close(()=>{void stopped.then(()=>{store.close();process.exit(0);});});});

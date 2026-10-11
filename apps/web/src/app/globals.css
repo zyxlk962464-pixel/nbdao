@@ -65,6 +65,10 @@ h2 { margin:9px 0 0; font-size:18px; font-weight:600; line-height:1.55; letter-s
 .tax-breakdown { margin-top:12px; border-top:1px solid #e3eadc; }
 .tax-breakdown summary { display:flex; align-items:center; justify-content:space-between; gap:8px; padding-top:12px; color:#53654b; font-size:11px; font-weight:500; cursor:pointer; }
 .tax-breakdown summary span { font-size:9px; color:#8b9781; font-weight:400; }
+.tax-history-table { margin-top:10px; overflow-x:auto; max-height:250px; }
+.tax-history-table table { width:100%; border-collapse:collapse; font-size:10px; color:#63745a; }
+.tax-history-table th,.tax-history-table td { text-align:left; padding:8px 6px; border-bottom:1px solid #e3eadc; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.tax-history-table th { font-weight:500; color:#829175; }
 .tax-cost-group { margin-top:14px; padding-top:12px; border-top:1px solid #e7ecdf; }
 .tax-cost-heading { display:flex; flex-wrap:wrap; justify-content:space-between; gap:5px 12px; font-size:10px; color:#7c8971; }
 .tax-cost-heading strong { color:#506447; font-weight:500; }
