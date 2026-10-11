@@ -31,13 +31,13 @@ CREATE UNIQUE INDEX IF NOT EXISTS one_pending_task ON attempts(taskId) WHERE sta
   release(key:string,holder:string){this.db.prepare('DELETE FROM leases WHERE key=? AND holder=?').run(key,holder);}
   saveQuote(id:string,task:string|undefined,data:unknown){this.db.prepare('INSERT OR REPLACE INTO quotes(id,taskId,created,data) VALUES(?,?,?,?)').run(id,task?.toLowerCase()??null,Date.now(),stringify(data));this.db.prepare('DELETE FROM quotes WHERE created<?').run(Date.now()-7*86400000);}
   audit(task:string|undefined,event:string,data:unknown){this.db.prepare('INSERT INTO audit(created,taskId,event,data) VALUES(?,?,?,?)').run(Date.now(),task?.toLowerCase()??null,event,stringify(data));}
-  /** Persist changes immediately; stable values get at most one heartbeat per minute. Never interpret a read failure as 0% tax. */
+  /** Persist changes immediately; stable values get at most one snapshot per 30 minutes. Never interpret a read failure as 0% tax. */
   recordTax(chainId:number,token:string,snapshot:SellTaxSnapshot|null,error='',now=Date.now()){
     const fee=snapshot?.sellFeeAfterSync??null,feePercent=fee===null?null:Number(fee);
     if(fee!==null&&(!/^\d{1,3}$/.test(fee)||!Number.isInteger(feePercent)||feePercent!>100))throw new Error('税率记录无效');
     const last=this.db.prepare('SELECT * FROM tax_history WHERE chainId=? AND token=? ORDER BY observedAt DESC,id DESC LIMIT 1').get(chainId,token.toLowerCase()) as TaxHistoryRecord|undefined;
     const replaced=!!snapshot&&last?.blockNumber===snapshot.blockNumber&&last.blockHash!==snapshot.blockHash;
-    if(last&&!replaced&&last.feePercent===feePercent&&now-last.observedAt<60000)return false;
+    if(last&&!replaced&&last.feePercent===feePercent&&now-last.observedAt<30*60000)return false;
     this.db.prepare('INSERT INTO tax_history(chainId,token,observedAt,feePercent,blockNumber,blockHash,timestamp,reason) VALUES(?,?,?,?,?,?,?,?)')
       .run(chainId,token.toLowerCase(),now,feePercent,snapshot?.blockNumber??null,snapshot?.blockHash??null,snapshot?.timestamp??null,(snapshot?.reason??error).slice(0,1200));
     this.db.prepare('DELETE FROM tax_history WHERE observedAt<? OR id<=(SELECT max(id)-100000 FROM tax_history)').run(now-30*86400000);

@@ -1,12 +1,12 @@
 import { decimal, floorFromTotal, type AppConfig, type PlanInput, type Policy, type WalletSnapshot } from '@nbdao/shared';
 
 export type FormValues = {
-  windowMinutes: string; maxSellFeePercent: string; minimumUSDT: string; extraTokens: string; dustTokens: string;
+  windowMinutes: string; minimumUSDT: string; extraTokens: string; dustTokens: string;
   maxChunks: string; slippagePercent: string; gasBudgetBNB: string; maxTxGasBNB: string;
   maxGasGwei: string; minEconomicUSDT: string;
 };
 export function initialForm(): FormValues {
-  return { windowMinutes: '60', maxSellFeePercent: '5', minimumUSDT: '', extraTokens: '0', dustTokens: '0.000001',
+  return { windowMinutes: '60', minimumUSDT: '', extraTokens: '0', dustTokens: '0.000001',
     maxChunks: '128', slippagePercent: '1', gasBudgetBNB: '0.02', maxTxGasBNB: '0.002', maxGasGwei: '3', minEconomicUSDT: '0.1' };
 }
 function integer(value: string, min: number, max: number, label: string) {
@@ -34,7 +34,7 @@ export function buildPlan(form: FormValues, wallet: WalletSnapshot, config: AppC
   const balance = BigInt(wallet.tokenBalance);
   if (balance <= 0n) throw new Error('钱包暂无可卖出的 NBDAO');
   const totalMinimum = decimal(form.minimumUSDT);
-  if (totalMinimum <= 0n) throw new Error('请设置大于 0 的最低全量 USDT');
+  if (totalMinimum <= 0n) throw new Error('请设置大于 0 的卖出后最低获得金额');
   const notBefore = chainTime(startTimestamp);
   const expiresAt = notBefore + integer(form.windowMinutes, 1, 1440, '监控时长分钟数') * 60;
   if (!Number.isSafeInteger(expiresAt)) throw new Error('链上时间不可用，请重新读取后再创建任务');
@@ -57,6 +57,6 @@ export function buildPolicy(form: FormValues): Policy {
   const gasBudget = decimal(form.gasBudgetBNB);
   const maxTxGas = decimal(form.maxTxGasBNB);
   if (gasBudget <= 0n || maxTxGas <= 0n || maxTxGas > gasBudget) throw new Error('Gas 预算须大于 0，且单笔上限不得超过总预算');
-  return { slippageBps, maxSellFeePercent: integer(form.maxSellFeePercent ?? '5', 0, 100, '最高基础卖出税率'), maxAttempts: 20, gasBudgetWei: gasBudget.toString(), maxTxGasWei: maxTxGas.toString(),
+  return { slippageBps, maxAttempts: 20, gasBudgetWei: gasBudget.toString(), maxTxGasWei: maxTxGas.toString(),
     minEconomicUSDT: decimal(form.minEconomicUSDT).toString(), confirmations: 3, maxQuoteAgeBlocks: 3 };
 }

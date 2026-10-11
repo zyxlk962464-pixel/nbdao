@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { useConnection, useSignMessage, useSwitchChain, useWriteContract } from 'wagmi';
 import { createPublicClient, decodeEventLog, http, type Address, type Hex } from 'viem';
 import { bsc } from 'viem/chains';
-import { beijingLabel, display, executorAbi, policyMessage, serviceLabels, shortAddress, STATUS_ZH, stringify, tokenAbi,
+import { beijingLabel, display, executorAbi, minimumOutput, policyMessage, serviceLabels, shortAddress, STATUS_ZH, stringify, tokenAbi,
   type AppConfig, type PlanInput, type TaskView, type WalletSnapshot } from '@nbdao/shared';
 import { bindPlanStart, buildPlan, buildPolicy, initialForm, type FormValues } from '@/lib/plan';
 import { localChain } from './providers';
@@ -144,7 +144,7 @@ export default function Home() {
   }, [form, wallet, config, address]);
   const formKey = stringify(form);
   const preparedMatches = !!prepared && prepared.key === formKey && prepared.plan.owner.toLowerCase() === address?.toLowerCase()
-    && prepared.plan.policy.maxSellFeePercent === Number(form.maxSellFeePercent ?? '5');
+    && prepared.plan.policy.maxSellFeePercent === undefined;
   // Freeze the amount and floor when requesting approval; balance refreshes must not change that plan.
   const createdPlan = created && created.plan.owner.toLowerCase() === address?.toLowerCase() ? created.plan : null;
   const reviewedPlan = createdPlan || (preparedMatches ? prepared!.plan : planResult.plan);
@@ -273,7 +273,7 @@ export default function Home() {
       const signature = await signMessage.mutateAsync({ message, account: address });
       assertSession(identity);
       await api('tasks/register', { taskId: createdTask.id, policy: createdTask.plan.policy, message, signature });
-      assertSession(identity); setNotice('执行服务已接管任务，会在剩余监控窗口内逐笔检查基础税和实际到账，满足条件才执行。');
+      assertSession(identity); setNotice('执行服务已接管任务，会在剩余监控窗口内逐笔检查实际到账和已签执行条件，满足条件才执行。');
       localStorage.removeItem(storageKey());
       setCreated(null);
     });
@@ -303,7 +303,7 @@ export default function Home() {
   const confirmationPlan = confirmedPlan || reviewedPlan;
   const monitoringMinutes = reviewedPlan ? (reviewedPlan.expiresAt - reviewedPlan.notBefore) / 60 : form.windowMinutes;
   const remainingMinutes = currentTask && visibleWallet ? Math.max(0, Math.ceil((Number(currentTask.expiresAt) - Number(visibleWallet.timestamp)) / 60)) : null;
-  const taxThreshold = confirmedPlan ? confirmedPlan.policy?.maxSellFeePercent ?? null : /^\d+$/.test(form.maxSellFeePercent ?? '5') && Number(form.maxSellFeePercent ?? '5') <= 100 ? Number(form.maxSellFeePercent ?? '5') : null;
+  const legacyTaxCeiling = confirmedPlan?.policy?.maxSellFeePercent;
   const connectionButton = <button className="button primary" onClick={() => setShowWallets(true)}>连接钱包 <Arrow /></button>;
   return <div className="app-shell">
     <header className="topbar"><a className="brand" href="/" aria-label="NBDAO 自动清仓首页"><span className="brand-icon">N</span><span>NBDAO<span className="brand-sub">EXIT</span></span></a>
@@ -311,7 +311,7 @@ export default function Home() {
         <WalletPanel config={config} wallet={visibleWallet} fresh={walletFresh} refreshing={refreshing} busy={!!busy || !!pendingTx} refresh={reload} open={showWallets} setOpen={setShowWallets} /></div>
     </header>
     <main>
-      <div className="intro"><div><div className="eyebrow">限时监控 · 自动分批 · USDT 直达钱包</div><h1>让清仓，<br className="mobile-break" />按你的条件执行。</h1><p>创建后开始监控，基础卖出税和扣费后到账同时满足条件才执行。</p></div><div className="intro-note"><span className="small-dot" />原钱包持币<br /><strong>资金不转入执行合约</strong></div></div>
+      <div className="intro"><div><div className="eyebrow">限时监控 · 自动分批 · USDT 直达钱包</div><h1>让清仓，<br className="mobile-break" />按你的条件执行。</h1><p>创建后开始监控，扣费后实际到账达到你设置的底线才执行。</p></div><div className="intro-note"><span className="small-dot" />原钱包持币<br /><strong>资金不转入执行合约</strong></div></div>
       {(configError || config && !config.ready) && <div className="banner neutral"><strong>自动执行尚未就绪 · 新任务已停用</strong><p>{configError || config?.missing.join('；') || '等待执行合约部署和服务配置'}</p></div>}
       {config?.monitor && <div className="banner neutral" data-testid="server-monitor"><strong>{config.monitor.location === 'cloud' ? '云端' : '本机'}后台监控 · {config.monitor.enabled && config.monitor.healthy && !configError ? '运行中' : '暂未就绪'}</strong><p>{config.monitor.location === 'cloud' ? '任务创建并签署服务条件后，关闭浏览器或电脑仍会在窗口内监控、达标后卖出。' : '本机执行需要电脑和 Keeper 保持运行。'}{config.monitor.lastBlockNumber && ` 最近检查区块 #${config.monitor.lastBlockNumber}。`}</p></div>}
       {config?.mode === 'read-only' && <div className="banner neutral"><strong>当前仅观察税率，自动卖出尚未开启</strong><p>当前可查看余额与已有任务，并由钱包取消有效任务或撤销授权。新授权、任务创建与服务启用已停用。</p></div>}
@@ -323,7 +323,7 @@ export default function Home() {
           <section className="panel balance-panel"><div className="panel-heading"><div className="eyebrow">01 / 钱包资产</div><span className="token-badge">NBDAO <span>→</span> USDT</span></div>
             <div className="balance-label">本次计划卖出全部余额</div><div className="hero-balance">{visibleWallet ? display(visibleWallet.tokenBalance, 6) : '—'}<span>NBDAO</span></div>
             <MarketReference config={config} wallet={visibleWallet} walletFresh={walletFresh} status={connection.status} chainMatched={sameChain} />
-            <SellTax threshold={taxThreshold} chainId={config?.chainId} readOnly={!config?.ready || config.mode === 'read-only'} rpcUrl={config?.walletRpcUrl} blockPollMs={config?.blockPollMs} />
+            <SellTax chainId={config?.chainId} readOnly={!config?.ready || config.mode === 'read-only'} rpcUrl={config?.walletRpcUrl} blockPollMs={config?.blockPollMs} />
             <div className="balance-bottom"><span>余额包含已累积奖励 <strong>{visibleWallet ? display(visibleWallet.pending, 6) : '—'} NBDAO</strong></span><span>钱包 USDT <strong>{visibleWallet ? display(visibleWallet.usdtBalance, 4) : '—'}</strong></span><span>钱包 BNB <strong>{visibleWallet ? display(visibleWallet.bnbBalance, 6) : '—'}</strong></span>{connection.status === 'connected' && sameChain && <button className="balance-refresh-button" data-testid="balance-refresh" disabled={refreshing} onClick={() => { void reload(); }}>{refreshing ? '刷新中…' : '刷新余额 ↻'}</button>}</div>
             {visibleWallet && <p className="snapshot-caption">钱包快照 #{visibleWallet.blockNumber} · {beijingLabel(visibleWallet.timestamp)} · 同步前税率快照 {visibleWallet.sellFee}%（不含其他扣费）</p>}
             {visibleWallet && (!walletFresh || !tasksFresh) && <p className="stale-snapshot" data-testid="wallet-stale" role="status">当前显示上次快照，数据尚未核查，新的资金操作已暂停。请刷新后重试。</p>}
@@ -331,9 +331,8 @@ export default function Home() {
             {walletError && <div className="inline-error" role="alert">{walletError}</div>}
           </section>
           <section className="panel plan-panel"><div className="panel-heading"><div><div className="eyebrow">02 / 成交条件</div><h2>给自动卖出划定边界</h2></div><span className="muted">创建后开始计时</span></div>
-            <div className="form-grid"><Field label="监控时长" help="创建时读取最新链上时间；过期后停止，余币仍在原钱包。"><div className="input-unit"><input aria-label="监控时长分钟" type="number" min="1" max="1440" value={form.windowMinutes} onChange={(e) => change('windowMinutes', e.target.value)} {...inputProps} /><span>分钟</span></div></Field>
-              <Field label="最高基础卖出税率" help="当前基础税须不高于此值，并通过实际到账检查。利润费用另计。"><div className="input-unit"><input aria-label="最高基础卖出税率" type="number" min="0" max="100" step="1" value={form.maxSellFeePercent ?? '5'} onChange={(e) => change('maxSellFeePercent', e.target.value)} {...inputProps} /><span>%</span></div></Field></div>
-            <Field label="当前全部余额的最低 USDT" help="按当前余额向上换算为单价底线，每笔低于底线就回滚。只有全部卖完才能达到全量目标。"><div className="input-unit minimum-input"><input aria-label="最低全量 USDT" inputMode="decimal" placeholder="输入你愿意接受的最低到账" value={form.minimumUSDT} onChange={(e) => change('minimumUSDT', e.target.value)} {...inputProps} /><span>USDT</span></div></Field>
+            <div className="form-grid"><Field label="监控时长" help="创建时读取最新链上时间；过期后停止，余币仍在原钱包。"><div className="input-unit"><input aria-label="监控时长分钟" type="number" min="1" max="1440" value={form.windowMinutes} onChange={(e) => change('windowMinutes', e.target.value)} {...inputProps} /><span>分钟</span></div></Field></div>
+            <Field label="卖出后最低获得" help="按当前全部余额折算每枚到账底线，每批低于底线就回滚。全部卖完才能达到总金额目标，额外奖励按同一底线计算。"><div className="input-unit minimum-input"><input aria-label="卖出后最低获得 USDT" inputMode="decimal" placeholder="输入你愿意接受的最低到账金额" value={form.minimumUSDT} onChange={(e) => change('minimumUSDT', e.target.value)} {...inputProps} /><span>USDT</span></div></Field>
             <details className="advanced"><summary>执行预算与奖励余量 <span>可调整</span></summary><div className="advanced-grid">
               <Field label="额外奖励额度 · NBDAO" help="默认 0。执行期间新增奖励超出额度时，会停止并显示余币。"><input aria-label="额外奖励额度" inputMode="decimal" value={form.extraTokens} onChange={(e) => change('extraTokens', e.target.value)} {...inputProps} /></Field>
               <Field label="余币阈值 · NBDAO" help="小于该值允许结束，并明确显示余币。"><input aria-label="余币阈值" inputMode="decimal" value={form.dustTokens} onChange={(e) => change('dustTokens', e.target.value)} {...inputProps} /></Field>
@@ -348,16 +347,16 @@ export default function Home() {
           </section>
         </div>
         <aside className="side-column">
-          <section className="panel confirm-panel"><div className="eyebrow">执行确认</div><h2>一次设置，<br />按条件执行卖出。</h2><p className="muted">每笔先检查基础税与实际到账，满足条件再卖出。USDT 直接进入当前持币钱包。</p>
+          <section className="panel confirm-panel"><div className="eyebrow">执行确认</div><h2>一次设置，<br />按条件执行卖出。</h2><p className="muted">每笔检查扣费后实际到账，达到底线才卖出。USDT 直接进入当前持币钱包。</p>
             <dl className="confirm-list">
               {confirmedPlan ? <><div><dt>开始 · 北京时间</dt><dd>{beijingLabel(confirmedPlan.notBefore)}</dd></div><div><dt>截止 · 北京时间</dt><dd>{beijingLabel(confirmedPlan.expiresAt)}</dd></div></> : <div><dt>监控窗口</dt><dd>创建后持续监控 {monitoringMinutes} 分钟</dd></div>}
-              <div><dt>最高基础卖出税</dt><dd>{confirmationPlan?.policy?.maxSellFeePercent === undefined ? confirmedPlan ? '未设置' : `${form.maxSellFeePercent ?? '5'}%` : `${confirmationPlan.policy.maxSellFeePercent}%`}</dd></div>
-              <div><dt>授权与卖出总上限</dt><dd>{confirmationPlan ? display(confirmationPlan.maxTotalInput, 6) : '—'} NBDAO</dd></div><div><dt>每枚最低到账</dt><dd>{confirmationPlan ? display(confirmationPlan.minUSDTPerToken, 10) : '—'} USDT</dd></div>
+              <div><dt>授权与卖出总上限</dt><dd>{confirmationPlan ? display(confirmationPlan.maxTotalInput, 6) : '—'} NBDAO</dd></div><div><dt>卖出后最低获得 · 按总额度</dt><dd>{confirmationPlan ? display(minimumOutput(BigInt(confirmationPlan.maxTotalInput), BigInt(confirmationPlan.minUSDTPerToken)), 4) : '—'} USDT</dd></div>
               <div><dt>Gas 总预算 / 单笔</dt><dd>{confirmationPlan?.policy ? `${display(confirmationPlan.policy.gasBudgetWei, 6)} / ${display(confirmationPlan.policy.maxTxGasWei, 6)}` : `${form.gasBudgetBNB} / ${form.maxTxGasBNB}`} BNB</dd></div>
               <div><dt>尝试 / 最多批数</dt><dd>{confirmationPlan?.policy?.maxAttempts ?? 20} 次 / {confirmationPlan?.maxChunks ?? form.maxChunks} 批</dd></div><div><dt>收款钱包</dt><dd>{address ? shortAddress(address) : '连接后显示'}</dd></div>
             </dl>
             <div className="steps"><span className={reviewedPlan ? 'done' : ''}>1 条件</span><i /><span className={wallet && reviewedPlan && BigInt(wallet.allowance) >= BigInt(reviewedPlan.maxTotalInput) ? 'done' : ''}>2 授权</span><i /><span className={created || hasActive ? 'done' : ''}>3 创建并签名</span></div>
             {!isConnected ? connectionButton : needsRegistration ? <button className="button primary full" disabled={!ready || !!busy} onClick={() => { void register(); }}>签署条件并启用服务 <Arrow /></button> : hasActive ? <div className="active-notice">当前钱包已有监控任务，请在下方查看进度。</div> : wallet && reviewedPlan && BigInt(wallet.allowance) < BigInt(reviewedPlan.maxTotalInput) ? <button className="button primary full" disabled={!canPrepare} onClick={() => { void approve(); }}>授权 {display(reviewedPlan.maxTotalInput, 3)} NBDAO <Arrow /></button> : <button className="button primary full" disabled={!canCreate} onClick={() => { void createTask(); }}>创建并开始监控 <Arrow /></button>}
+            {legacyTaxCeiling !== undefined && <p className="stale-snapshot" data-testid="legacy-tax-notice">当前任务保留原已签条件：基础税不高于 {legacyTaxCeiling}% 且实际到账达标。若要只按最低到账执行，请取消后重新创建。</p>}
             <p className="action-caption">先完成有限授权，再创建链上任务并签署服务条件。<br />窗口从创建请求时的最新链上时间计时，创建后的等待不延长截止时间。</p>
             {busy && <div className="operation-state" role="status"><span className="spinner" />{busy}</div>}
             {pendingTx && !busy && <div className="inline-notice" role="status">已有交易待确认，暂不提交新交易。<button className="wallet-retry" data-testid="wallet-recover-transaction" onClick={() => { void recoverPending(pendingTx); }}>核查交易回执</button></div>}
@@ -372,7 +371,7 @@ export default function Home() {
         <div className="progress-track"><div style={{ width: `${Math.min(100, Number(BigInt(currentTask.soldInput) * 10000n / (BigInt(currentTask.maxTotalInput) || 1n)) / 100)}%` }} /></div>
         <p className="task-reason">{currentTask.reason || `已完成 ${currentTask.nextChunkIndex} 批，已尝试 ${currentTask.attempts} 次。`}</p>
         <p className="snapshot-caption">{beijingLabel(currentTask.notBefore)} 至 {beijingLabel(currentTask.expiresAt)} · 每枚最低 {display(currentTask.minUSDTPerToken, 10)} USDT · 总卖出上限 {display(currentTask.maxTotalInput, 6)} NBDAO</p>
-        <p className="snapshot-caption">链上快照剩余 {remainingMinutes === null ? '待核查' : `${remainingMinutes} 分钟`} · 最高基础税 {currentTask.policy?.maxSellFeePercent === undefined ? '未设置' : `${currentTask.policy.maxSellFeePercent}%`}；上方税率仅为预估，基础税与实际到账须同时满足条件。</p>
+        <p className="snapshot-caption">链上快照剩余 {remainingMinutes === null ? '待核查' : `${remainingMinutes} 分钟`}；上方税率仅供参考，成交须满足最低到账和该任务已签执行条件。</p>
         {currentTask.fills.length > 0 && <div className="fill-table"><div className="fill-header"><span>批次 / 交易</span><span>卖出 NBDAO</span><span>到账 USDT</span><span>确认</span></div>{currentTask.fills.map((fill) => <div className="fill-row" key={fill.hash}><span>#{fill.index + 1} · {config?.explorerUrl ? <a href={`${config.explorerUrl.replace(/\/$/, '')}/tx/${fill.hash}`} target="_blank" rel="noreferrer">{shortAddress(fill.hash)} ↗</a> : shortAddress(fill.hash)}</span><span>{display(fill.input, 4)}</span><span>{display(fill.output, 4)}</span><span>{fill.confirmed ? '已对账' : '确认中'}</span></div>)}</div>}
         <div className="task-actions">{active(currentTask) && !currentTask.policy && <button className="button secondary compact" disabled={!ready || !!busy || taskExpired(currentTask)} onClick={() => { void recoverRegistration(); }}>恢复服务参数签名</button>}{active(currentTask) && !taskExpired(currentTask) && <button className="button danger compact" disabled={!canManage || !!busy || !!pendingTx} onClick={() => { void cancelTask(); }}>取消任务</button>}<button className="button compact" disabled={!canManage || !!busy || !!pendingTx || !visibleWallet || BigInt(visibleWallet.allowance) === 0n} onClick={() => { void approve(true); }}>撤销剩余授权</button><span className="muted">{taskExpired(currentTask) ? '已到期任务无需取消；撤销剩余授权需要钱包确认。' : '取消任务与撤销授权分别需要钱包确认。'}</span></div>
       </section>}

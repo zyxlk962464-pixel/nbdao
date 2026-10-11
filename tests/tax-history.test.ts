@@ -14,18 +14,22 @@ function db(){const dir=mkdtempSync(join(tmpdir(),'tax-history-'));dirs.push(dir
 const hash=`0x${'12'.repeat(32)}` as const;
 const snapshot=(fee:string|null,number='100'):SellTaxSnapshot=>({sellFeeAfterSync:fee,blockNumber:number,blockHash:hash,timestamp:String(Math.floor(Date.now()/1000)),reason:fee===null?'RPC 暂不可用':'按源码计算的基础税'});
 describe('durable tax observations',()=>{
-  it('persists changes, stable minute heartbeats and unknown states without inventing a 0% minimum',()=>{
+  it('persists changes immediately, stable 30-minute snapshots and unknown states without inventing a 0% minimum',()=>{
     const {path,store}=db(),now=Date.now();
     expect(store.recordTax(56,BSC.token,snapshot('100'),' ',now)).toBe(true);
     expect(store.recordTax(56,BSC.token,snapshot('100','101'),' ',now+1000)).toBe(false);
-    expect(store.recordTax(56,BSC.token,snapshot('100','102'),' ',now+60000)).toBe(true);
-    expect(store.recordTax(56,BSC.token,snapshot('20','103'),' ',now+61000)).toBe(true);
-    expect(store.recordTax(56,BSC.token,null,'RPC 限流',now+62000)).toBe(true);
-    expect(store.recordTax(56,BSC.token,snapshot('20','104'),' ',now+63000)).toBe(true);
+    expect(store.recordTax(56,BSC.token,snapshot('100','102'),' ',now+60000)).toBe(false);
+    expect(store.recordTax(56,BSC.token,snapshot('100','103'),' ',now+1799999)).toBe(false);
+    expect(store.recordTax(56,BSC.token,snapshot('100','104'),' ',now+1800000)).toBe(true);
+    expect(store.recordTax(56,BSC.token,snapshot('20','105'),' ',now+1800001)).toBe(true);
+    expect(store.recordTax(56,BSC.token,null,'RPC 限流',now+1800002)).toBe(true);
+    expect(store.recordTax(56,BSC.token,snapshot('20','106'),' ',now+1800003)).toBe(true);
     expect(()=>store.recordTax(56,BSC.token,snapshot('101'))).toThrow('无效');
-    const before=store.taxHistory(56,BSC.token,now+63000);expect(before.minPercent).toBe(20);expect(before.maxPercent).toBe(100);expect(before.records).toHaveLength(5);expect(before.records[1]?.feePercent).toBeNull();
+    const before=store.taxHistory(56,BSC.token,now+1800003);expect(before.minPercent).toBe(20);expect(before.maxPercent).toBe(100);expect(before.records).toHaveLength(5);expect(before.records[1]?.feePercent).toBeNull();
     store.close();stores.splice(stores.indexOf(store),1);const restored=new Store(path);stores.push(restored);
-    expect(restored.taxHistory(56,BSC.token,now+63000)).toEqual(before);
+    expect(restored.taxHistory(56,BSC.token,now+1800003)).toEqual(before);
+    expect(restored.recordTax(56,BSC.token,snapshot('20','107'),' ',now+3600002)).toBe(false);
+    expect(restored.recordTax(56,BSC.token,snapshot('20','108'),' ',now+3600003)).toBe(true);
   });
   it('keeps same-height replacement hashes and scopes retention/statistics to the requested token and network',()=>{
     const {store}=db(),now=Date.now();

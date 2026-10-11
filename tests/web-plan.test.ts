@@ -11,11 +11,13 @@ const wallet: WalletSnapshot = { owner, tokenBalance: (3n * UNIT).toString(), pe
 const form = () => ({ ...initialForm(), minimumUSDT: '1' });
 
 describe('wallet sale plan', () => {
-  it('defaults to a 60-minute preview from the chain snapshot with a 5% tax limit', () => {
+  it('uses the chosen output floor and a 60-minute preview without signing a separate tax limit', () => {
     const plan = buildPlan(form(), wallet, config);
     expect(plan.notBefore).toBe(Number(wallet.timestamp));
     expect(plan.expiresAt - plan.notBefore).toBe(3600);
-    expect(plan.policy.maxSellFeePercent).toBe(5);
+    expect(plan.policy).not.toHaveProperty('maxSellFeePercent');
+    expect(initialForm()).not.toHaveProperty('maxSellFeePercent');
+    expect(minimumOutput(BigInt(wallet.tokenBalance),BigInt(plan.minUSDTPerToken))).toBeGreaterThanOrEqual(UNIT);
     expect(initialForm()).not.toHaveProperty('date');
   });
   it('accepts a latest creation timestamp instead of using browser time or approval time', () => {
@@ -25,7 +27,9 @@ describe('wallet sale plan', () => {
     expect(plan.expiresAt).toBe(Number(creationTime) + 1200);
   });
   it('rebinds the creation window without changing approval amounts, floors or signed policy', () => {
-    const approved = buildPlan({ ...form(), minimumUSDT: '40', maxSellFeePercent: '3', gasBudgetBNB: '0.03', maxTxGasBNB: '0.003', maxChunks: '10' }, wallet, config);
+    const approved = buildPlan({ ...form(), minimumUSDT: '40', gasBudgetBNB: '0.03', maxTxGasBNB: '0.003', maxChunks: '10' }, wallet, config);
+    // A pre-existing task may still carry an authenticated tax ceiling.
+    approved.policy={...approved.policy,maxSellFeePercent:3};
     const before = structuredClone(approved);
     const started = bindPlanStart(approved, BigInt(wallet.timestamp) + 86400n);
     expect(started.notBefore).toBe(Number(wallet.timestamp) + 86400);
@@ -88,10 +92,9 @@ describe('wallet sale plan', () => {
     const plan = buildPlan({ ...form(), windowMinutes }, wallet, config);
     expect(bindPlanStart(plan, 2000000000n).expiresAt).toBe(2000000000 + Number(windowMinutes) * 60);
   });
-  it.each(['', '-1', '101', '5.5', '1e1'])('rejects invalid maximum base tax %s', (maxSellFeePercent) => {
-    expect(() => buildPolicy({ ...form(), maxSellFeePercent })).toThrow('最高基础卖出税率');
-  });
-  it.each(['0', '100'])('supports integer maximum base tax boundary %s', (maxSellFeePercent) => {
-    expect(buildPolicy({ ...form(), maxSellFeePercent }).maxSellFeePercent).toBe(Number(maxSellFeePercent));
+  it('does not silently reintroduce a tax ceiling from a legacy form object', () => {
+    const legacyForm={...form(),maxSellFeePercent:'5'};
+    expect(buildPolicy(legacyForm)).not.toHaveProperty('maxSellFeePercent');
+    expect(policyMessage(config.chainId,config.sellerAddress!,`0x${'a'.repeat(64)}`,buildPolicy(legacyForm))).not.toContain('maxSellFeePercent');
   });
 });

@@ -7,7 +7,7 @@ import TaxHistoryPanel from './tax-history';
 
 const stale = (timestamp: string) => !/^\d+$/.test(timestamp) || Number(timestamp) * 1000 < Date.now() - 30000 || Number(timestamp) * 1000 > Date.now() + 10000;
 
-export default function SellTax({ threshold, chainId, readOnly, rpcUrl, blockPollMs = 500 }: { threshold: number | null; chainId?: number; readOnly: boolean; rpcUrl?: string; blockPollMs?: number }) {
+export default function SellTax({ chainId, readOnly, rpcUrl, blockPollMs = 500 }: { chainId?: number; readOnly: boolean; rpcUrl?: string; blockPollMs?: number }) {
   const [snapshot, setSnapshot] = useState<SellTaxSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
@@ -43,18 +43,16 @@ export default function SellTax({ threshold, chainId, readOnly, rpcUrl, blockPol
   }, [chainId, rpcUrl, blockPollMs]);
 
   const fee = snapshot?.sellFeeAfterSync ?? null;
-  const meets = fee !== null && threshold !== null && Number(fee) <= threshold;
-  const state = fee === null ? '不可用' : threshold === null ? '未设置目标' : meets ? '达到基础税目标' : '高于基础税目标';
   const basicRate = fee === null ? null : Number(fee);
   const allocationAvailable = basicRate !== null && (basicRate === 0 || basicRate >= 3);
   const basicFixed = allocationAvailable ? basicRate === 0 ? '0%' : '1%' : '待有效快照';
   const highRate = allocationAvailable ? `${Math.max(0, basicRate! - 3)}%` : '待有效快照';
   return <div className="sell-tax-reference" data-testid="sell-tax-reference" aria-live="polite">
     <div className="sell-tax-main"><div><span>当前预计基础卖出税率</span><strong data-testid="sell-tax-value">{fee === null ? loading && !failed ? '读取中…' : '暂不可用' : `${fee}%`}</strong></div>
-      <div className="sell-tax-target"><span>目标 {threshold === null ? '未设置' : `≤ ${threshold}%`}</span><strong className={fee === null || threshold === null ? 'tax-unavailable' : meets ? 'tax-met' : 'tax-waiting'} data-testid="sell-tax-status">{state}</strong></div></div>
+      <div className="sell-tax-target"><span>费用参考</span><strong className="tax-unavailable" data-testid="sell-tax-status">{fee === null ? '暂不可用' : '以实际到账为准'}</strong></div></div>
     <div className="sell-tax-meta"><span>{snapshot ? `快照 #${snapshot.blockNumber} · ${beijingLabel(snapshot.timestamp)}` : failed ? '读取失败或快照过期，不采用旧税率' : '读取当前链上状态'}</span><span>{readOnly ? '只读观察 · ' : ''}新区块刷新</span></div>
     {snapshot && fee === null && snapshot.reason && <p>{snapshot.reason}</p>}
-    <p>自然同步后的预计基础税，不含利润扣费；交易入块时仍可变化，达到税率目标不代表实际到账达标。</p>
+    <p>自然同步后的预计基础税，不含利润扣费；交易入块时仍可变化。新任务按最低到账金额判断成交，税率仅供参考。</p>
     <TaxHistoryPanel />
     {chainId === 56 && <details className="tax-breakdown" open data-testid="tax-breakdown">
       <summary>卖出扣费组成 <span>规则与计算基数</span></summary>
