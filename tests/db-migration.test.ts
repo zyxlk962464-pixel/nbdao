@@ -24,7 +24,7 @@ describe('SQLite cutover preserves execution history',()=>{
     source.recordTax(56,BSC.token,{sellFeeAfterSync:'20',blockNumber:'100',blockHash:`0x${'16'.repeat(32)}`,timestamp:String(Math.floor(now/1000)),reason:'snapshot'});source.close();
     await exportDatabase(f.source,f.snapshot);await restoreDatabase(f.snapshot,f.target);
     const target=new Store(f.target);try{expect(target.taxHistory(56,BSC.token).minPercent).toBe(20);}finally{target.close();}
-    const other=f.target+'.history-only',existing=new Store(other);existing.recordTax(56,BSC.token,null,'Unavailable');existing.close();
+    const other=f.target+'.history-only',existing=new Store(other);existing.db.prepare('INSERT INTO tax_history(chainId,token,observedAt,feePercent,reason) VALUES(?,?,?,?,?)').run(56,BSC.token,now,null,'Legacy unavailable');existing.close();
     await expect(restoreDatabase(f.snapshot,other)).rejects.toThrow('已有记录');
   });
   it('retains frozen policies, pending signatures, nonces and paid Gas; re-import cannot reset them',async()=>{

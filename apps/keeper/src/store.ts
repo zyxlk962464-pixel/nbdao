@@ -7,6 +7,7 @@ export type Registered = { id:Hex; owner:string; policy:Policy; status:string; r
 export type Attempt = { hash:Hex; taskId:Hex; nonce:number; raw:Hex; input:string; minOut:string; index:number; sentAt:number; state:string; gasWei:string; blockNumber:string|null; blockHash:Hex|null; output:string; confirmed:boolean };
 export class Store {
   db:DatabaseSync;
+  private lastTaxFee=new Map<string,number>();
   constructor(path:string) { mkdirSync(dirname(path),{recursive:true});this.db=new DatabaseSync(path);this.db.exec(`PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;
 CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY, owner TEXT NOT NULL, policy TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'AwaitingQuote', reason TEXT NOT NULL DEFAULT '', created INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS attempts (hash TEXT PRIMARY KEY, taskId TEXT NOT NULL, nonce INTEGER NOT NULL, raw TEXT NOT NULL, input TEXT NOT NULL, minOut TEXT NOT NULL, chunkIndex INTEGER NOT NULL, sentAt INTEGER NOT NULL, state TEXT NOT NULL, gasWei TEXT NOT NULL DEFAULT '0', blockNumber TEXT, blockHash TEXT, output TEXT NOT NULL DEFAULT '0', confirmed INTEGER NOT NULL DEFAULT 0);
@@ -31,22 +32,27 @@ CREATE UNIQUE INDEX IF NOT EXISTS one_pending_task ON attempts(taskId) WHERE sta
   release(key:string,holder:string){this.db.prepare('DELETE FROM leases WHERE key=? AND holder=?').run(key,holder);}
   saveQuote(id:string,task:string|undefined,data:unknown){this.db.prepare('INSERT OR REPLACE INTO quotes(id,taskId,created,data) VALUES(?,?,?,?)').run(id,task?.toLowerCase()??null,Date.now(),stringify(data));this.db.prepare('DELETE FROM quotes WHERE created<?').run(Date.now()-7*86400000);}
   audit(task:string|undefined,event:string,data:unknown){this.db.prepare('INSERT INTO audit(created,taskId,event,data) VALUES(?,?,?,?)').run(Date.now(),task?.toLowerCase()??null,event,stringify(data));}
-  /** Persist changes immediately; stable values get at most one snapshot per 30 minutes. Never interpret a read failure as 0% tax. */
-  recordTax(chainId:number,token:string,snapshot:SellTaxSnapshot|null,error='',now=Date.now()){
+  /** Save only valid fees below 100%; ignore outages and keep 100% observations in memory to detect a return to a low fee. */
+  recordTax(chainId:number,token:string,snapshot:SellTaxSnapshot|null,_error='',now=Date.now()){
     const fee=snapshot?.sellFeeAfterSync??null,feePercent=fee===null?null:Number(fee);
     if(fee!==null&&(!/^\d{1,3}$/.test(fee)||!Number.isInteger(feePercent)||feePercent!>100))throw new Error('税率记录无效');
-    const last=this.db.prepare('SELECT * FROM tax_history WHERE chainId=? AND token=? ORDER BY observedAt DESC,id DESC LIMIT 1').get(chainId,token.toLowerCase()) as TaxHistoryRecord|undefined;
-    const replaced=!!snapshot&&last?.blockNumber===snapshot.blockNumber&&last.blockHash!==snapshot.blockHash;
-    if(last&&!replaced&&last.feePercent===feePercent&&now-last.observedAt<30*60000)return false;
+    if(feePercent===null||!snapshot)return false;
+    const scope=`${chainId}:${token.toLowerCase()}`;
+    if(feePercent===100){this.lastTaxFee.set(scope,feePercent);return false;}
+    const last=this.db.prepare('SELECT * FROM tax_history WHERE chainId=? AND token=? AND feePercent>=0 AND feePercent<100 ORDER BY observedAt DESC,id DESC LIMIT 1').get(chainId,token.toLowerCase()) as TaxHistoryRecord|undefined;
+    const previous=this.lastTaxFee.get(scope)??last?.feePercent;
+    const replaced=last?.blockNumber===snapshot.blockNumber&&last.blockHash!==snapshot.blockHash;
+    if(last&&!replaced&&previous===feePercent&&now-last.observedAt<30*60000){this.lastTaxFee.set(scope,feePercent);return false;}
     this.db.prepare('INSERT INTO tax_history(chainId,token,observedAt,feePercent,blockNumber,blockHash,timestamp,reason) VALUES(?,?,?,?,?,?,?,?)')
-      .run(chainId,token.toLowerCase(),now,feePercent,snapshot?.blockNumber??null,snapshot?.blockHash??null,snapshot?.timestamp??null,(snapshot?.reason??error).slice(0,1200));
+      .run(chainId,token.toLowerCase(),now,feePercent,snapshot.blockNumber,snapshot.blockHash,snapshot.timestamp,snapshot.reason.slice(0,1200));
+    this.lastTaxFee.set(scope,feePercent);
     this.db.prepare('DELETE FROM tax_history WHERE observedAt<? OR id<=(SELECT max(id)-100000 FROM tax_history)').run(now-30*86400000);
     return true;
   }
   taxHistory(chainId:number,token:string,now=Date.now()){
     const scope=[chainId,token.toLowerCase(),now-30*86400000] as const;
-    const summary=this.db.prepare('SELECT min(observedAt) AS firstRecordedAt,min(feePercent) AS minPercent,max(feePercent) AS maxPercent FROM tax_history WHERE chainId=? AND token=? AND observedAt>=?').get(...scope) as {firstRecordedAt:number|null;minPercent:number|null;maxPercent:number|null};
-    const records=this.db.prepare('SELECT observedAt,feePercent,blockNumber,blockHash,timestamp,reason FROM tax_history WHERE chainId=? AND token=? AND observedAt>=? ORDER BY observedAt DESC,id DESC LIMIT 20').all(...scope) as TaxHistoryRecord[];
+    const summary=this.db.prepare('SELECT min(observedAt) AS firstRecordedAt,min(feePercent) AS minPercent,max(feePercent) AS maxPercent FROM tax_history WHERE chainId=? AND token=? AND observedAt>=? AND feePercent>=0 AND feePercent<100').get(...scope) as {firstRecordedAt:number|null;minPercent:number|null;maxPercent:number|null};
+    const records=this.db.prepare('SELECT observedAt,feePercent,blockNumber,blockHash,timestamp,reason FROM tax_history WHERE chainId=? AND token=? AND observedAt>=? AND feePercent>=0 AND feePercent<100 ORDER BY observedAt DESC,id DESC LIMIT 20').all(...scope) as TaxHistoryRecord[];
     return {...summary,records,retentionDays:30};
   }
 }
