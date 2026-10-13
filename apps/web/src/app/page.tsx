@@ -312,6 +312,7 @@ export default function Home() {
     </header>
     <main>
       <div className="intro"><div><div className="eyebrow">限时监控 · 自动分批 · USDT 直达钱包</div><h1>让清仓，<br className="mobile-break" />按你的条件执行。</h1><p>创建后开始监控，扣费后实际到账达到你设置的底线才执行。</p></div><div className="intro-note"><span className="small-dot" />原钱包持币<br /><strong>资金不转入执行合约</strong></div></div>
+      <p className="snapshot-caption" style={{ margin: '0 0 20px' }}><a href="/opening" data-testid="opening-link">08:00 指定日期卖出 →</a> · 设置一次性日期任务、BNB 总费用上限和最低 USDT 到账</p>
       {(configError || config && !config.ready) && <div className="banner neutral"><strong>自动执行尚未就绪 · 新任务已停用</strong><p>{configError || config?.missing.join('；') || '等待执行合约部署和服务配置'}</p></div>}
       {config?.monitor && <div className="banner neutral" data-testid="server-monitor"><strong>{config.monitor.location === 'cloud' ? '云端' : '本机'}后台监控 · {config.monitor.enabled && config.monitor.healthy && !configError ? '运行中' : '暂未就绪'}</strong><p>{config.monitor.location === 'cloud' ? '任务创建并签署服务条件后，关闭浏览器或电脑仍会在窗口内监控、达标后卖出。' : '本机执行需要电脑和 Keeper 保持运行。'}{config.monitor.lastBlockNumber && ` 最近检查区块 #${config.monitor.lastBlockNumber}。`}</p></div>}
       {config?.mode === 'read-only' && <div className="banner neutral"><strong>当前仅观察税率，自动卖出尚未开启</strong><p>当前可查看余额与已有任务，并由钱包取消有效任务或撤销授权。新授权、任务创建与服务启用已停用。</p></div>}

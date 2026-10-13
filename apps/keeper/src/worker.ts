@@ -82,7 +82,13 @@ export class Worker {
     catch(e){this.store.state(id,'WaitingForTax',`基础卖出税率无法判断，暂停执行：${message(e)}`);return false;}
   }
   async send(id:Hex,input:bigint,minOut:bigint,index:number,validUntil:bigint){
+    if(this.store.hasOpeningPending()){this.store.state(id,'PendingTx','同一执行钱包已预签定时抢卖交易，等待该任务结束。');return;}
+    if(!this.store.acquire('executor',this.holder,Math.max(180000,(this.config.quoteTimeoutMs??90000)*2)))return;
+    try{await this.sendLocked(id,input,minOut,index,validUntil);}finally{this.store.release('executor',this.holder);}
+  }
+  private async sendLocked(id:Hex,input:bigint,minOut:bigint,index:number,validUntil:bigint){
     if(this.stopping)return;
+    if(this.store.hasOpeningPending())return;
     if(this.config.app.mode==='read-only'||!this.config.app.ready){this.store.state(id,'MissingConfiguration','只读模式或配置未就绪，不发送交易。');return;}
     if(!this.config.key||!this.config.app.sellerAddress)throw new Error('执行密钥/合约未配置');
     const r=this.store.task(id)!;const task=await this.chain.rawTask(id);assertTaskAllowed(this.config,task);const owner=task.owner;const account=privateKeyToAccount(this.config.key);if(task.params.executor.toLowerCase()!==account.address.toLowerCase())throw new Error('任务执行者与服务密钥不一致');const c=this.chain.client;const seller=this.config.app.sellerAddress;
@@ -119,13 +125,13 @@ export class Worker {
   }
   async tick(){if(this.busy||this.stopping)return;this.busy=true;try{
     if(this.config.app.mode==='read-only'){for(const t of this.store.tasks())this.store.state(t.id,'MissingConfiguration','只读模式不发送交易。');return;}
-    if(!this.store.acquire('worker',this.holder,Math.max(180000,this.config.quoteTimeoutMs*2)))return;
+    if(!this.store.acquire('worker',this.holder,Math.max(180000,(this.config.quoteTimeoutMs??90000)*2)))return;
     if(!this.config.app.ready){for(const t of this.store.tasks())this.store.state(t.id,'MissingConfiguration',this.config.app.missing.join('、'));return;}
     const b=await this.chain.client.getBlock();if(b.number===null||b.hash===null)throw new Error('监听区块尚未确认');
     if(b.number===this.lastHead&&b.hash===this.lastHeadHash)return;
     this.lastHead=b.number;this.lastHeadHash=b.hash;
     this.checkedAt=Date.now();
-    const reliable=await this.reconcile(b.number);if(!reliable||this.store.pending().length)return;
+    const reliable=await this.reconcile(b.number);if(!reliable||this.store.pending().length||this.store.hasOpeningPending())return;
     for(const registered of this.store.tasks()){
       if(this.stopping)return;
       const id=registered.id,t=await this.chain.rawTask(id);if(t.status>2){this.store.state(id,'Closed','链上任务已结束。');continue;}if(t.status===0)continue;

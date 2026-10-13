@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { Store,type Attempt } from '../apps/keeper/src/store.ts';
 import { exportDatabase,restoreDatabase } from '../scripts/migrate-db.ts';
 import { BSC } from '../packages/shared/src/index.ts';
+import { OpeningStore } from '../apps/keeper/src/opening-store.ts';
 
 const id=`0x${'12'.repeat(32)}` as const,owner='0x0000000000000000000000000000000000000011';
 const policy={slippageBps:100,maxAttempts:10,gasBudgetWei:'1000',maxTxGasWei:'100',minEconomicUSDT:'0',confirmations:3,maxQuoteAgeBlocks:3,maxSellFeePercent:30};
@@ -19,6 +20,24 @@ function fixture(){
   store.close();return {source,snapshot,target};
 }
 describe('SQLite cutover preserves execution history',()=>{
+  it('retains opening signatures, pending nonces, setup Gas and builder payments',async()=>{
+    const f=fixture(),source=new Store(f.source),opening=new OpeningStore(source);
+    const p={totalCostWei:'1000',setupTxHashes:[`0x${'16'.repeat(32)}` as const],gasPriceWei:'1',builderFeeWei:'80',confirmations:3 as const};
+    opening.register(id,owner,p,'23');
+    opening.insert({taskId:id,hash:`0x${'17'.repeat(32)}`,nonce:9,raw:'0x03',sentAt:2,state:'unknown',submissions:2,gasWei:'11',builderFeeWei:'80',blockNumber:null,blockHash:null,output:'5',confirmed:false});source.close();
+    const manifest=await exportDatabase(f.source,f.snapshot);
+    expect(manifest.summary).toMatchObject({pending:2,gasSpentWei:'25',setupGasSpentWei:'23',builderFeeSpentWei:'80'});
+    await restoreDatabase(f.snapshot,f.target);const target=new Store(f.target);
+    try{const restored=new OpeningStore(target);expect(restored.task(id)?.policy).toEqual(p);expect(restored.attempt(id)).toMatchObject({nonce:9,raw:'0x03',submissions:2,builderFeeWei:'80',state:'unknown'});}finally{target.close();}
+  });
+  it('can restore snapshots made before the independent opening tables existed',async()=>{
+    const f=fixture(),source=new Store(f.source);source.db.exec('DROP TABLE opening_tasks; DROP TABLE opening_attempts');source.close();
+    await exportDatabase(f.source,f.snapshot);
+    const path=f.snapshot+'.manifest.json',manifest=JSON.parse(readFileSync(path,'utf8'));
+    delete manifest.summary.counts.opening_tasks;delete manifest.summary.counts.opening_attempts;delete manifest.summary.setupGasSpentWei;delete manifest.summary.builderFeeSpentWei;
+    writeFileSync(path,JSON.stringify(manifest));await restoreDatabase(f.snapshot,f.target);
+    const target=new Store(f.target);try{expect(target.task(id)?.policy).toEqual(policy);expect(new OpeningStore(target).attempts()).toHaveLength(0);}finally{target.close();}
+  });
   it('backs up recorded taxes and refuses to overwrite a target containing only tax history',async()=>{
     const f=fixture(),source=new Store(f.source),now=Date.now();
     source.recordTax(56,BSC.token,{sellFeeAfterSync:'20',blockNumber:'100',blockHash:`0x${'16'.repeat(32)}`,timestamp:String(Math.floor(now/1000)),reason:'snapshot'});source.close();

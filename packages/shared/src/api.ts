@@ -7,6 +7,10 @@ export type AppConfig = {
   /** HTTP head detection interval; business checks run only for new blocks. */
   blockPollMs?: number;
   monitor?: MonitorStatus;
+  openingSellerAddress?: Address|null;
+  openingReady?: boolean;
+  openingMissing?: string[];
+  openingMonitor?: Omit<MonitorStatus,'lastBlockNumber'> & {error:string|null};
 };
 export type MonitorStatus = {
   location: 'cloud'|'local'; running: boolean; enabled: boolean; healthy: boolean;

@@ -14,6 +14,8 @@ CREATE TABLE IF NOT EXISTS attempts (hash TEXT PRIMARY KEY, taskId TEXT NOT NULL
 CREATE TABLE IF NOT EXISTS leases (key TEXT PRIMARY KEY, holder TEXT NOT NULL, expires INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS quotes (id TEXT PRIMARY KEY, taskId TEXT, created INTEGER NOT NULL, data TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS audit (id INTEGER PRIMARY KEY AUTOINCREMENT, created INTEGER NOT NULL, taskId TEXT, event TEXT NOT NULL, data TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS opening_tasks (id TEXT PRIMARY KEY, owner TEXT NOT NULL, policy TEXT NOT NULL, setupGasWei TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'WaitingForStart', reason TEXT NOT NULL DEFAULT '', created INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS opening_attempts (taskId TEXT PRIMARY KEY, hash TEXT UNIQUE NOT NULL, nonce INTEGER NOT NULL, raw TEXT NOT NULL, sentAt INTEGER NOT NULL, state TEXT NOT NULL, submissions INTEGER NOT NULL DEFAULT 0, gasWei TEXT NOT NULL DEFAULT '0', builderFeeWei TEXT NOT NULL DEFAULT '0', blockNumber TEXT, blockHash TEXT, output TEXT NOT NULL DEFAULT '0', confirmed INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS tax_history (id INTEGER PRIMARY KEY AUTOINCREMENT, chainId INTEGER NOT NULL, token TEXT NOT NULL, observedAt INTEGER NOT NULL, feePercent INTEGER, blockNumber TEXT, blockHash TEXT, timestamp TEXT, reason TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS tax_history_scope ON tax_history(chainId,token,observedAt DESC,id DESC);
 CREATE INDEX IF NOT EXISTS tax_history_time ON tax_history(observedAt);
@@ -25,6 +27,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS one_pending_task ON attempts(taskId) WHERE sta
   state(id:Hex,status:string,reason=''){this.db.prepare('UPDATE tasks SET status=?,reason=? WHERE id=?').run(status,reason,id.toLowerCase());}
   attempts(id?:string):Attempt[]{const r=id?this.db.prepare('SELECT * FROM attempts WHERE taskId=? ORDER BY sentAt').all(id.toLowerCase()):this.db.prepare('SELECT * FROM attempts ORDER BY sentAt').all();return r.map(row=>({hash:row.hash,taskId:row.taskId,nonce:row.nonce,raw:row.raw,input:row.input,minOut:row.minOut,index:row.chunkIndex,sentAt:row.sentAt,state:row.state,gasWei:row.gasWei,blockNumber:row.blockNumber,blockHash:row.blockHash,output:row.output,confirmed:!!row.confirmed})) as Attempt[];}
   pending(){return this.attempts().filter(a=>['signed','pending','mined'].includes(a.state));}
+  hasOpeningPending(){return Boolean(this.db.prepare("SELECT 1 FROM opening_attempts WHERE state IN ('signed','pending','mined','unknown') LIMIT 1").get());}
   insert(a:Attempt){this.db.prepare('INSERT INTO attempts(hash,taskId,nonce,raw,input,minOut,chunkIndex,sentAt,state,gasWei,blockNumber,blockHash,output,confirmed) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(a.hash.toLowerCase(),a.taskId.toLowerCase(),a.nonce,a.raw,a.input,a.minOut,a.index,a.sentAt,a.state,a.gasWei,a.blockNumber,a.blockHash,a.output,a.confirmed?1:0);}
   update(hash:Hex,data:Partial<Attempt>){const cols:Record<string,string>={state:'state',gasWei:'gasWei',blockNumber:'blockNumber',blockHash:'blockHash',output:'output',confirmed:'confirmed'};for(const [k,v]of Object.entries(data)){const col=cols[k];if(col)this.db.prepare(`UPDATE attempts SET ${col}=? WHERE hash=?`).run(typeof v==='boolean'?Number(v):v as string,hash.toLowerCase());}}
   spent(id:Hex){return this.attempts(id).reduce((n,a)=>n+BigInt(a.gasWei),0n);}

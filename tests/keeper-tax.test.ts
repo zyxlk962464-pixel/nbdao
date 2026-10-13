@@ -18,7 +18,7 @@ const state:SellFeeState={timestamp:3n*86400n,reserveUSDT:100n*UNIT,reserveToken
 function snapshot(fee:string|null,reason=''):SellTaxSnapshot{return {sellFeeAfterSync:fee,reason,blockNumber:'100',blockHash:hash,timestamp:'100'};}
 function fixture(max:number|undefined=5){
   const row={id,owner,policy:{...policy,maxSellFeePercent:max} as Policy,status:'AwaitingQuote',reason:'',created:1};
-  const store={tasks:()=>[row],task:()=>row,attempts:()=>[],pending:()=>[],spent:()=>0n,acquire:()=>true,state:vi.fn((_:string,status:string,reason:string)=>{row.status=status;row.reason=reason;}),saveQuote:vi.fn()} as unknown as Store;
+  const store={tasks:()=>[row],task:()=>row,attempts:()=>[],pending:()=>[],hasOpeningPending:()=>false,spent:()=>0n,acquire:()=>true,release:vi.fn(),state:vi.fn((_:string,status:string,reason:string)=>{row.status=status;row.reason=reason;}),saveQuote:vi.fn()} as unknown as Store;
   const task={owner,status:1,nextChunkIndex:0,soldInput:0n,receivedUSDT:0n,params:{executor:owner,notBefore:90n,expiresAt:200n,maxChunks:10,maxTotalInput:100n,minUSDTPerToken:1n,maxDustTokens:0n,maxGasPrice:100n}};
   const getBlock=vi.fn(async(_?:{blockNumber?:bigint})=>({number:100n,hash,timestamp:100n}));
   const predictSellFee=vi.fn(async()=>snapshot('80'));

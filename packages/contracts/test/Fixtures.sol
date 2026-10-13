@@ -54,7 +54,7 @@ contract MockNBDAO is ERC20 {
     function reward(address a) public { uint256 r=rewards[a]; rewards[a]=0; if(r>0) super._update(address(0),a,r); }
     function balanceOf(address a) public view override returns (uint256) { return super.balanceOf(a)+pending(a); }
     function isWL(address) external pure returns (bool) { return false; }
-    function sync(bool) external { MockPair(basePair).sync(); }
+    function sync(bool) external virtual { MockPair(basePair).sync(); }
     function getSellFee() external view returns (uint256,bool,uint256) { (,uint112 r,)=MockPair(basePair).getReserves(); return (feeBps/100,false,r); }
     function userInfo(address) external pure returns (address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256) { return (address(0),0,0,0,0,0,0,0,0,0,0,0,0); }
     function _update(address from,address to,uint256 amount) internal override {

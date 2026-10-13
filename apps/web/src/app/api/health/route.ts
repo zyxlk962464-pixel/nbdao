@@ -8,6 +8,7 @@ export async function GET(){
     const status=await response.json();
     if(!response.ok||status.status!=='ok')throw new Error('Keeper unavailable');
     if(!status.monitor?.running||!status.monitor.healthy)throw new Error('Worker unavailable');
-    return Response.json({status:'ok',mode:status.mode,executionReady:status.mode!=='read-only'&&status.ready&&status.monitor.enabled,monitor:status.monitor},{headers:{'Cache-Control':'no-store'}});
+    if(status.openingMonitor&&!status.openingMonitor.running)throw new Error('Opening Worker unavailable');
+    return Response.json({status:'ok',mode:status.mode,executionReady:status.mode!=='read-only'&&status.ready&&status.monitor.enabled,monitor:status.monitor,openingExecutionReady:status.mode==='live'&&status.openingReady===true&&status.openingMonitor?.enabled===true&&status.openingMonitor?.healthy===true,openingMonitor:status.openingMonitor},{headers:{'Cache-Control':'no-store'}});
   }catch{return Response.json({status:'unavailable'},{status:503,headers:{'Cache-Control':'no-store'}});}
 }
