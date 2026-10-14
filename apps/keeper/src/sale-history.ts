@@ -50,6 +50,12 @@ export class SaleHistory {
   }
   private async header(number:bigint,work:Work){this.guard(work);const block=await this.client.getBlock({blockNumber:number});this.guard(work);if(block.number!==number||!block.hash)throw new Error('成交查询区块无效');return block;}
   private async rewind(confirmed:bigint,work:Work,recordInvalid=false){
+    if(recordInvalid){
+      // The replacement previous sale can be arbitrarily earlier than 50 blocks.
+      // Reuse the bounded reverse bootstrap instead of losing it behind a forward cursor.
+      this.save({recordJSON:null,scanBlock:null,scanHash:null,searchBlock:null,searchHead:null,searchFloor:null},work);
+      this.state='loading';this.reason='原成交已发生重组，重新分批查找全池最近一笔已确认的外部卖出。';return;
+    }
     const cursor=this.saved.scanBlock?BigInt(this.saved.scanBlock):confirmed;
     const sold=recordInvalid&&this.record?BigInt(this.record.blockNumber):cursor;
     const base=(cursor<sold?cursor:sold)<confirmed?(cursor<sold?cursor:sold):confirmed;
