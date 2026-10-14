@@ -24,7 +24,7 @@ function fixture(step=10n,initialHead?:bigint){
   const block=(number:bigint)=>({number,hash:canonical.get(number)??hash(number),timestamp:genesis+number*step});
   const client={getChainId:vi.fn().mockResolvedValue(56),getBlock:vi.fn(async(request?:{blockNumber?:bigint})=>block(request?.blockNumber??head)),getLogs:vi.fn(async({fromBlock,toBlock}:{fromBlock:bigint;toBlock:bigint})=>allLogs.filter(log=>log.blockNumber>=fromBlock&&log.blockNumber<=toBlock)),getTransaction:vi.fn(async({hash:txHash}:{hash:Hex})=>({hash:txHash,from:sender})),getTransactionReceipt:vi.fn(async({hash:txHash}:{hash:Hex})=>{const receipt=receipts.get(txHash);if(!receipt)throw new Error('missing receipt');return receipt;})};
   const config={app:{chainId:56,mode:'live',addresses:BSC}} as unknown as Runtime,chain={client} as unknown as Chain;
-  const create=(logsClient?:Pick<Chain['client'],'getLogs'>)=>{const history=new DailySaleHistory(config,chain,store,client as unknown as Chain['client'],logsClient);histories.push(history);return history;};
+  const create=(logsClient?:Pick<Chain['client'],'getLogs'>,factory?:(url:string)=>Pick<Chain['client'],'getChainId'|'getLogs'>)=>{const history=new DailySaleHistory(config,chain,store,client as unknown as Chain['client'],logsClient,factory);histories.push(history);return history;};
   const history=create();
   function add(number:bigint,holders:Address[]=[outside],index=0,kind:'external'|'internal'|'ambiguous'='external'){
     const txHash=hash(number*1000n+BigInt(index)+1000000n),blockHash=block(number).hash;
@@ -122,6 +122,25 @@ describe('Whole previous Beijing day sale history',()=>{
     const getLogs=vi.fn(async(request:Parameters<typeof read>[0])=>{if(request.fromBlock===f.first+50n&&fail){fail=false;throw new Error('one 50-block archive subrange unavailable');}return read(request);});
     const tracker=f.create({getLogs} as unknown as Pick<Chain['client'],'getLogs'>);await tracker.tick();expect(tracker.previousDay()).toMatchObject({status:'loading',scanBlockNumber:null,records:[]});await tracker.tick();
     expect(tracker.previousDay()).toMatchObject({status:'ready',records:[expect.objectContaining({txHash:tx})]});expect(getLogs).toHaveBeenCalledTimes(273);
+  });
+  it('never reads empty logs from a custom RPC on the wrong chain or declares the day ready',async()=>{
+    const f=fixture();(f.config as Runtime&{historyRpcUrls:string[]}).historyRpcUrls=['https://wrong.example/private-test-key'];
+    const wrong={getChainId:vi.fn().mockResolvedValue(1),getLogs:vi.fn().mockResolvedValue([])};
+    const tracker=f.create(undefined,()=>wrong as unknown as Pick<Chain['client'],'getChainId'|'getLogs'>);await tracker.tick();
+    expect(wrong.getLogs).not.toHaveBeenCalled();expect(tracker.previousDay()).toMatchObject({status:'loading',date:'2026-10-13'});expect(tracker.previousDay().reason).toContain('BSC 网络校验');expect(tracker.previousDay().reason).not.toContain('private-test-key');
+  });
+  it('falls back only between independently verified BSC custom log clients and excludes a wrong-chain candidate',async()=>{
+    const f=fixture();const tx=f.add(f.first);(f.config as Runtime&{historyRpcUrls:string[]}).historyRpcUrls=['https://wrong.example','https://limited.example/key','https://ready.example/key'];
+    const wrong={getChainId:vi.fn().mockResolvedValue(1),getLogs:vi.fn().mockResolvedValue([])},limited={getChainId:vi.fn().mockResolvedValue(56),getLogs:vi.fn().mockRejectedValue(new Error('private RPC quota exhausted https://limited.example/key'))},ready={getChainId:vi.fn().mockResolvedValue(56),getLogs:vi.fn(f.client.getLogs.getMockImplementation()!)};
+    const candidates=[wrong,limited,ready];const tracker=f.create(undefined,url=>candidates[f.config.historyRpcUrls!.indexOf(url)] as unknown as Pick<Chain['client'],'getChainId'|'getLogs'>);await tracker.tick();
+    expect(wrong.getLogs).not.toHaveBeenCalled();expect(limited.getLogs).toHaveBeenCalledTimes(173);expect(ready.getLogs).toHaveBeenCalledTimes(173);expect(candidates.every(candidate=>candidate.getChainId.mock.calls.length===1)).toBe(true);
+    expect(tracker.previousDay()).toMatchObject({status:'ready',records:[expect.objectContaining({txHash:tx})]});expect(f.client.getLogs).not.toHaveBeenCalled();
+  });
+  it('keeps a completed public cache stale when every configured history RPC fails network verification and retries later',async()=>{
+    const f=fixture();f.add(f.first);await f.history.tick();(f.config as Runtime&{historyRpcUrls:string[]}).historyRpcUrls=['https://temporarily-down.example/secret'];
+    const rpc={getChainId:vi.fn().mockRejectedValueOnce(new Error('https://temporarily-down.example/secret')).mockResolvedValue(56),getLogs:vi.fn(f.client.getLogs.getMockImplementation()!)};
+    const tracker=f.create(undefined,()=>rpc as unknown as Pick<Chain['client'],'getChainId'|'getLogs'>);await tracker.tick();expect(tracker.previousDay()).toMatchObject({status:'stale'});expect(tracker.previousDay().records).toHaveLength(1);expect(tracker.previousDay().reason).not.toContain('secret');expect(rpc.getLogs).not.toHaveBeenCalled();
+    await tracker.tick();expect(tracker.previousDay().status).toBe('ready');expect(rpc.getChainId).toHaveBeenCalledTimes(2);
   });
   it('retains at most the last three date windows without a row-count cap',async()=>{const f=fixture();for(let day=0;day<5;day++){f.setHead(f.end+262n+BigInt(day)*8640n);await f.history.tick();}const dates=f.store.db.prepare('SELECT date FROM market_sale_days ORDER BY date').all();expect(dates).toEqual([{date:'2026-10-15'},{date:'2026-10-16'},{date:'2026-10-17'}]);});
   it('yields to a recent wallet transaction without looking at stored signed raw payloads',async()=>{const f=fixture();f.store.db.prepare('INSERT INTO attempts(hash,taskId,nonce,raw,input,minOut,chunkIndex,sentAt,state,gasWei,output,confirmed) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)').run(hash(99),hash(98),1,'0x01','1','1',0,Date.now(),'pending','0','0',0);await f.history.tick();expect(f.client.getBlock).not.toHaveBeenCalled();expect(f.history.previousDay().reason).toContain('优先处理');f.store.db.prepare('UPDATE attempts SET sentAt=?').run(Date.now()-121000);await f.history.tick();expect(f.history.previousDay().status).toBe('ready');});

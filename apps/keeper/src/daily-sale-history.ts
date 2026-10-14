@@ -9,6 +9,8 @@ import { MARKET_READ_RPCS } from './sale-history.js';
 const SWAP=parseAbiItem('event Swap(address indexed sender,uint256 amount0In,uint256 amount1In,uint256 amount0Out,uint256 amount1Out,address indexed to)');
 type Client=Pick<Chain['client'],'getChainId'|'getBlock'|'getLogs'|'getTransaction'|'getTransactionReceipt'>;
 type LogsClient=Pick<Client,'getLogs'>;
+type HistoryRpcClient=Pick<Client,'getChainId'|'getLogs'>;
+type HistoryRpcFactory=(url:string)=>HistoryRpcClient;
 type Saved={scope:string;date:string;startTimestamp:string;endTimestamp:string;startBlock:string|null;endBlock:string|null;scanBlock:string|null;scanHash:Hex|null;endHash:Hex|null;boundsJSON:string|null;updatedAt:number};
 type Search={low:string;high:string};
 type Page={from:string;to:string;hash:Hex;done:string[]};
@@ -17,18 +19,23 @@ type Work={deadline:number;pages:number};
 class ScanPause extends Error {}
 class ScanBudget extends Error {}
 class ScanReorg extends Error {}
+class HistoryRpcUnavailable extends Error {}
 const digits=(s:unknown):s is string=>typeof s==='string'&&/^\d+$/.test(s);
 const hash=(s:unknown):s is Hex=>typeof s==='string'&&/^0x[0-9a-f]{64}$/i.test(s);
 
 /** Confirmed, previous Beijing calendar day. Scanning and API reads never sign transactions. */
 export class DailySaleHistory {
   private readonly client:Client;private readonly logsClient:LogsClient;private readonly splitLogs:boolean;private readonly scope:string;
+  private readonly historyCandidates:HistoryRpcClient[];private verifiedHistory:HistoryRpcClient[]=[];
   private saved:Saved|null=null;private bounds:Bounds|null=null;private records:SaleRecord[]=[];private corrupt=false;
   private state:PreviousDaySales['status']='loading';private reason='正在根据已确认链上时间定位北京时间上一天。';
   private running=false;private stopping=false;private timer:ReturnType<typeof setInterval>|undefined;private work:Promise<void>|undefined;
-  constructor(public config:Runtime,public chain:Chain,public store:Store,client?:Client,logsClient?:LogsClient){
+  constructor(public config:Runtime,public chain:Chain,public store:Store,client?:Client,logsClient?:LogsClient,historyRpcFactory?:HistoryRpcFactory){
     this.client=client??(config.app.mode==='local'?chain.client:createPublicClient({transport:fallback(MARKET_READ_RPCS.map(url=>http(url,{timeout:2500,retryCount:0})),{rank:false,retryCount:0})}));
-    this.splitLogs=Boolean(logsClient)||(!client&&config.app.mode!=='local');
+    const customUrls=!logsClient&&config.app.mode!=='local'&&(!client||historyRpcFactory)?config.historyRpcUrls??[]:[];
+    const createHistory=historyRpcFactory??((url:string)=>createPublicClient({transport:http(url,{batch:{batchSize:20,wait:16},timeout:5000,retryCount:0})}));
+    this.historyCandidates=customUrls.map(createHistory);
+    this.splitLogs=Boolean(logsClient)||this.historyCandidates.length>0||(!client&&config.app.mode!=='local');
     this.logsClient=logsClient??(this.splitLogs?createPublicClient({transport:http('https://public.1rpc.io/bnb',{batch:{batchSize:20,wait:16},timeout:5000,retryCount:0})}):this.client);
     this.scope=`${config.app.chainId}:${config.app.addresses.token.toLowerCase()}:${config.app.addresses.pair.toLowerCase()}`;
     const row=this.store.db.prepare('SELECT * FROM market_sale_days WHERE scope=? ORDER BY date DESC LIMIT 1').get(this.scope) as Saved|undefined;
@@ -46,7 +53,7 @@ export class DailySaleHistory {
     this.work=this.scan().catch(error=>{
       this.state=this.complete()?'stale':'loading';
       const date=this.saved?.date?`${this.saved.date} 缓存：`:'';
-      this.reason=error instanceof ScanPause?error.message:error instanceof ScanBudget?`${date}本轮达到时间或批次数上限，后台从已核验进度继续；整日记录尚未完成。`:`${date}链上查询暂时失败，保留已核验记录且不跳过扫描区间；后台重试。`;
+      this.reason=error instanceof ScanPause?error.message:error instanceof HistoryRpcUnavailable?`${date}历史成交 RPC 暂不可用或未通过 BSC 网络校验，请配置可用的 BSC 历史 RPC；保留已核验记录，后台重试。`:error instanceof ScanBudget?`${date}本轮达到时间或批次数上限，后台从已核验进度继续；整日记录尚未完成。`:`${date}链上查询暂时失败，保留已核验记录且不跳过扫描区间；后台重试。`;
     }).finally(()=>{this.work=undefined;});return this.work;
   }
   private complete(){return Boolean(this.saved&&digits(this.saved.endBlock)&&digits(this.saved.scanBlock)&&BigInt(this.saved.scanBlock)===BigInt(this.saved.endBlock)-1n);}
@@ -131,14 +138,29 @@ export class DailySaleHistory {
     const next={...this.bounds!};delete next.page;
     this.write({scanBlock:last.toString(),scanHash:this.saved!.endHash,boundsJSON:JSON.stringify(next)},work);this.bounds=next;return true;
   }
+  private async prepareHistory(work:Work){
+    if(!this.historyCandidates.length||this.verifiedHistory.length)return;
+    this.guard(work);
+    const checked=await Promise.allSettled(this.historyCandidates.map(candidate=>candidate.getChainId()));this.guard(work);
+    this.verifiedHistory=this.historyCandidates.filter((_candidate,index)=>checked[index]!.status==='fulfilled'&&(checked[index] as PromiseFulfilledResult<number>).value===this.config.app.chainId);
+    if(!this.verifiedHistory.length)throw new HistoryRpcUnavailable();
+  }
+  private async readLogs(range:{fromBlock:bigint;toBlock:bigint},work:Work){
+    this.guard(work);
+    const request={address:this.config.app.addresses.pair,event:SWAP,...range,strict:true} as const;
+    if(!this.historyCandidates.length)return this.logsClient.getLogs(request);
+    // A failed request may fall back only to a candidate whose own chain ID was verified.
+    for(const candidate of this.verifiedHistory){this.guard(work);try{return await candidate.getLogs(request);}catch{}}
+    throw new HistoryRpcUnavailable();
+  }
   private async logs(from:bigint,to:bigint,work:Work){
     this.guard(work);
     const ranges:{fromBlock:bigint;toBlock:bigint}[]=[];
     const size=this.splitLogs?50n:5000n;
     for(let start=from;start<=to;start+=size)ranges.push({fromBlock:start,toBlock:start+size-1n<to?start+size-1n:to});
-    // Every 1RPC subrequest respects its 50-block range; HTTP batching combines up to 20 requests.
+    // Every archive subrequest respects a 50-block range; HTTP batching combines up to 20 requests.
     // Wait for all in-flight responses before shutdown or retry, including a partial batch failure.
-    const results=await Promise.allSettled(ranges.map(range=>this.logsClient.getLogs({address:this.config.app.addresses.pair,event:SWAP,...range,strict:true})));
+    const results=await Promise.allSettled(ranges.map(range=>this.readLogs(range,work)));
     this.guard(work);
     return results.flatMap(result=>{if(result.status==='rejected')throw result.reason;return result.value;});
   }
@@ -176,6 +198,7 @@ export class DailySaleHistory {
     if(canonical.hash!==head.hash||canonical.timestamp!==head.timestamp)throw new Error('head changed');
     const end=((canonical.timestamp+28800n)/86400n)*86400n-28800n,start=end-86400n,date=new Date(Number(start+28800n)*1000).toISOString().slice(0,10);
     this.select(date,start,end,head.number,canonical.hash!,work);
+    await this.prepareHistory(work);
     try{
       if(this.saved!.startBlock===null||this.saved!.endBlock===null){
         if(!this.bounds||BigInt(this.bounds.anchorBlock)>head.number||(await this.header(BigInt(this.bounds.anchorBlock),work)).hash!==this.bounds.anchorHash){this.reset(head.number,canonical.hash!,work);return;}
