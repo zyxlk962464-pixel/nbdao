@@ -7,6 +7,7 @@ import { bsc } from 'viem/chains';
 import { beijingLabel, display, openingExecutorAbi, openingPolicyMessage, serviceLabels, shortAddress, stringify, tokenAbi,
   type AppConfig, type OpeningTaskView, type WalletSnapshot } from '@nbdao/shared';
 import WalletPanel from '../wallet-panel';
+import LastSale from '../last-sale';
 import { localChain } from '../providers';
 import { LatestRead, OperationGate, WalletSession } from '@/lib/wallet-session';
 import { walletError } from '@/lib/wallet-errors';
@@ -245,6 +246,7 @@ export default function OpeningPage() {
         {pending && <div className="stale-snapshot"><p>已有钱包请求，仅核查回执，不会重复提交。</p>{pending.hash ? <button className="button compact" disabled={!!busy} onClick={() => { void action('核查已提交交易', (identity) => finish(pending, identity), true); }}>核查现有回执</button> : <><input aria-label="已提交交易哈希" placeholder="从钱包活动复制 0x… 交易哈希" value={hashInput} onChange={(event) => setHashInput(event.target.value)} /><button className="button compact" disabled={!!busy || !validHash(hashInput)} onClick={() => { void action('只读核查钱包交易', async (identity) => { const restored = { ...pending, hash: hashInput as Hex }; save(currentDraft, restored, restored.owner, restored.seller, restored.chainId, identity); await finish(restored, identity); }, true); }}>核查该交易</button></>}</div>}
       </section></aside></div>
       {currentTask && <section className="panel task-panel" data-testid="opening-task"><div className="panel-heading"><div><div className="eyebrow">任务进度 · {shortAddress(currentTask.taskId)}</div><h2>{taskLabels[currentTask.status] || '正在核查任务'}</h2></div><span className="status-pill">{currentTask.serviceStatus === 'Prepared' ? '已预签 · 等待投递' : serviceLabels[currentTask.serviceStatus] || currentTask.serviceStatus}</span></div><div className="task-metrics"><div className="metric"><span>已卖出</span><strong>{display(currentTask.soldInput, 6)}<small>NBDAO</small></strong></div><div className="metric"><span>实际到账</span><strong>{display(currentTask.receivedUSDT, 6)}<small>USDT</small></strong></div><div className="metric"><span>执行 Gas / 抢排序费</span><strong>{display(currentTask.gasSpentWei, 8)} / {display(currentTask.builderFeeSpentWei, 8)}<small>BNB</small></strong></div></div><p className="snapshot-caption">{currentTask.reason}</p><p className="snapshot-caption">{beijingLabel(currentTask.notBefore)} 至 {beijingLabel(currentTask.expiresAt)} · 最低到账 {display(currentTask.minTotalUSDT, 6)} USDT</p>{currentTask.txHash && config?.explorerUrl && <a className="transaction-link" href={`${config.explorerUrl}/tx/${currentTask.txHash}`} target="_blank" rel="noreferrer">查看卖出交易 ↗</a>}{armed && <div className="task-actions"><button className="button danger compact" disabled={!canManage || !!busy || !!pending} onClick={() => { void cancelTask(); }}>取消任务</button><span className="muted">取消需要钱包确认并另付 Gas。</span></div>}</section>}
+      <LastSale explorerUrl={config?.explorerUrl}/>
       <footer><a href="/">返回窗口监控卖出</a><span>一次性日期任务 · 有限授权 · 实际到账底线</span></footer>
     </main></div>;
 }

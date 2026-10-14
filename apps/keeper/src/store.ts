@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS quotes (id TEXT PRIMARY KEY, taskId TEXT, created INT
 CREATE TABLE IF NOT EXISTS audit (id INTEGER PRIMARY KEY AUTOINCREMENT, created INTEGER NOT NULL, taskId TEXT, event TEXT NOT NULL, data TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS opening_tasks (id TEXT PRIMARY KEY, owner TEXT NOT NULL, policy TEXT NOT NULL, setupGasWei TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'WaitingForStart', reason TEXT NOT NULL DEFAULT '', created INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS opening_attempts (taskId TEXT PRIMARY KEY, hash TEXT UNIQUE NOT NULL, nonce INTEGER NOT NULL, raw TEXT NOT NULL, sentAt INTEGER NOT NULL, state TEXT NOT NULL, submissions INTEGER NOT NULL DEFAULT 0, gasWei TEXT NOT NULL DEFAULT '0', builderFeeWei TEXT NOT NULL DEFAULT '0', blockNumber TEXT, blockHash TEXT, output TEXT NOT NULL DEFAULT '0', confirmed INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS market_sale (scope TEXT PRIMARY KEY,recordJSON TEXT,scanBlock TEXT,scanHash TEXT,searchBlock TEXT,searchHead TEXT,searchFloor TEXT,updatedAt INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS tax_history (id INTEGER PRIMARY KEY AUTOINCREMENT, chainId INTEGER NOT NULL, token TEXT NOT NULL, observedAt INTEGER NOT NULL, feePercent INTEGER, blockNumber TEXT, blockHash TEXT, timestamp TEXT, reason TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS tax_history_scope ON tax_history(chainId,token,observedAt DESC,id DESC);
 CREATE INDEX IF NOT EXISTS tax_history_time ON tax_history(observedAt);

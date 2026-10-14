@@ -4,7 +4,7 @@ import { chmodSync,existsSync,mkdirSync,readFileSync,renameSync,rmSync,writeFile
 import { dirname,resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-const tables=['tasks','attempts','quotes','audit','leases','tax_history','opening_tasks','opening_attempts'] as const;
+const tables=['tasks','attempts','quotes','audit','leases','tax_history','opening_tasks','opening_attempts','market_sale'] as const;
 type Summary={counts:Record<string,number>;pending:number;gasSpentWei:string;activeLeases:number;setupGasSpentWei?:string;builderFeeSpentWei?:string};
 type Manifest={version:1;createdAt:string;sha256:string;cutoverReady:boolean;summary:Summary};
 function hash(path:string){return createHash('sha256').update(readFileSync(path)).digest('hex');}

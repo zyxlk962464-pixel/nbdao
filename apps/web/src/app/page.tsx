@@ -11,6 +11,7 @@ import { localChain } from './providers';
 import WalletPanel from './wallet-panel';
 import MarketReference from './market-reference';
 import SellTax from './sell-tax';
+import LastSale from './last-sale';
 import { LatestRead, OperationGate, WalletSession } from '@/lib/wallet-session';
 import { walletError as walletConnectionError } from '@/lib/wallet-errors';
 
@@ -376,6 +377,7 @@ export default function Home() {
         {currentTask.fills.length > 0 && <div className="fill-table"><div className="fill-header"><span>批次 / 交易</span><span>卖出 NBDAO</span><span>到账 USDT</span><span>确认</span></div>{currentTask.fills.map((fill) => <div className="fill-row" key={fill.hash}><span>#{fill.index + 1} · {config?.explorerUrl ? <a href={`${config.explorerUrl.replace(/\/$/, '')}/tx/${fill.hash}`} target="_blank" rel="noreferrer">{shortAddress(fill.hash)} ↗</a> : shortAddress(fill.hash)}</span><span>{display(fill.input, 4)}</span><span>{display(fill.output, 4)}</span><span>{fill.confirmed ? '已对账' : '确认中'}</span></div>)}</div>}
         <div className="task-actions">{active(currentTask) && !currentTask.policy && <button className="button secondary compact" disabled={!ready || !!busy || taskExpired(currentTask)} onClick={() => { void recoverRegistration(); }}>恢复服务参数签名</button>}{active(currentTask) && !taskExpired(currentTask) && <button className="button danger compact" disabled={!canManage || !!busy || !!pendingTx} onClick={() => { void cancelTask(); }}>取消任务</button>}<button className="button compact" disabled={!canManage || !!busy || !!pendingTx || !visibleWallet || BigInt(visibleWallet.allowance) === 0n} onClick={() => { void approve(true); }}>撤销剩余授权</button><span className="muted">{taskExpired(currentTask) ? '已到期任务无需取消；撤销剩余授权需要钱包确认。' : '取消任务与撤销授权分别需要钱包确认。'}</span></div>
       </section>}
+      <LastSale explorerUrl={config?.explorerUrl}/>
       <footer><span>NBDAO / USDT · 一次性清仓任务</span><span>成交条件随链上状态变化，不能保证最高收益或首个区块成交。</span></footer>
     </main>
   </div>;
