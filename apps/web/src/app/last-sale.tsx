@@ -35,6 +35,12 @@ function amount(value: string) {
   return whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + (fraction ? `.${fraction}` : '');
 }
 
+function compactAmount(value: string) {
+  const [whole, fraction = ''] = amount(value).split('.');
+  const shortened = fraction.slice(0, 8).replace(/0+$/, '');
+  return (fraction.length > 8 ? '≈' : '') + whole + (shortened ? `.${shortened}` : '');
+}
+
 function transactionUrl(sale: SaleRecord, explorerUrl?: string) {
   const base = explorerUrl || (sale.chainId === 56 ? 'https://bscscan.com' : '');
   if (!base) return null;
@@ -88,14 +94,14 @@ export default function LastSale({ explorerUrl }: { explorerUrl?: string }) {
         {sale.txSender.toLowerCase() !== sale.owner.toLowerCase() && <p className="last-sale-note">交易发起者 {sale.txSender}</p>}
         {sale.recipient.toLowerCase() !== sale.owner.toLowerCase() && <p className="last-sale-note">兑换收款地址 {sale.recipient}</p>}
         <div className="last-sale-metrics">
-          <div className="metric"><span>卖出代币数</span><strong data-testid="last-sale-input">{sale.soldInput === null ? '无法确认' : amount(sale.soldInput)}{sale.soldInput !== null && <small>NBDAO</small>}</strong></div>
+          <div className="metric"><span>卖出代币数</span><strong data-testid="last-sale-input" title={sale.soldInput === null ? undefined : `${amount(sale.soldInput)} NBDAO`}>{sale.soldInput === null ? '无法确认' : compactAmount(sale.soldInput)}{sale.soldInput !== null && <small>NBDAO</small>}</strong></div>
           <div className="metric"><span>实际 Gas</span><strong data-testid="last-sale-gas">{amount(sale.gasWei)}<small>BNB</small></strong></div>
           <div className="metric"><span>实际代币扣税率</span><strong data-testid="last-sale-tax">{sale.taxPercent === null ? '无法确认' : `${sale.taxPercent}%`}</strong></div>
-          <div className="metric"><span>实收 USDT</span><strong className={sale.receivedUSDT === null ? 'last-sale-unavailable' : undefined} data-testid="last-sale-output">{sale.receivedUSDT === null ? '由其他地址收取 / 无法确认' : amount(sale.receivedUSDT)}{sale.receivedUSDT !== null && <small>USDT</small>}</strong></div>
+          <div className="metric"><span>实收 USDT</span><strong className={sale.receivedUSDT === null ? 'last-sale-unavailable' : undefined} data-testid="last-sale-output" title={sale.receivedUSDT === null ? undefined : `${amount(sale.receivedUSDT)} USDT`}>{sale.receivedUSDT === null ? '由其他地址收取 / 无法确认' : compactAmount(sale.receivedUSDT)}{sale.receivedUSDT !== null && <small>USDT</small>}</strong></div>
         </div>
         <p className="last-sale-note">按该笔日志核算，包含基础与利润扣费，不含兑换费、Gas 和排序费。</p>
         {sale.taxPercent === null && sale.taxReason && <p className="last-sale-note" data-testid="last-sale-tax-reason">{sale.taxReason}</p>}
-        {sale.receivedUSDT === null && <p className="last-sale-note" data-testid="last-sale-settlement">本次兑换换出 {amount(sale.swapUSDT)} USDT；{sale.settlementReason || '持币钱包最终实收无法确认。'}</p>}
+        {sale.receivedUSDT === null && <p className="last-sale-note" data-testid="last-sale-settlement">本次兑换换出 <span title={`${amount(sale.swapUSDT)} USDT`}>{compactAmount(sale.swapUSDT)}</span> USDT；{sale.settlementReason || '持币钱包最终实收无法确认。'}</p>}
         {sale.holderCount > 1 && <p className="last-sale-note">本笔包含 {sale.holderCount} 个持币地址，展示其中最后一次实际卖出；Gas 为整笔交易消耗。</p>}
         {sale.builderFeeWei !== null && BigInt(sale.builderFeeWei) > 0n && <p className="last-sale-note">另付抢排序费 {amount(sale.builderFeeWei)} BNB；单独列示，未计入上方 Gas。</p>}
         <div className="last-sale-meta"><span>成交时间 {beijingLabel(sale.timestamp)} · 北京时间</span><span className={`last-sale-status${expired ? ' expired' : ''}`} data-testid="last-sale-status">{expired ? result?.status === 'loading' && !failed ? '正在核查最新成交' : '核查已过期' : '已确认成功'}</span></div>
