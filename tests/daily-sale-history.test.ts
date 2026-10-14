@@ -8,7 +8,7 @@ import { Store } from '../apps/keeper/src/store.js';
 import type { Runtime } from '../apps/keeper/src/config.js';
 import type { Chain } from '../apps/keeper/src/chain.js';
 import { BSC, pairAbi, tokenAbi } from '../packages/shared/src/index.js';
-import type { MarketSaleReceipt } from '../apps/keeper/src/market-sale.js';
+import { parseMarketSale, type MarketSaleReceipt } from '../apps/keeper/src/market-sale.js';
 
 const address=(n:number)=>`0x${n.toString(16).padStart(40,'0')}` as Address;
 const hash=(n:bigint|number)=>`0x${n.toString(16).padStart(64,'0')}` as Hex;
@@ -24,7 +24,7 @@ function fixture(step=10n,initialHead?:bigint){
   const block=(number:bigint)=>({number,hash:canonical.get(number)??hash(number),timestamp:genesis+number*step});
   const client={getChainId:vi.fn().mockResolvedValue(56),getBlock:vi.fn(async(request?:{blockNumber?:bigint})=>block(request?.blockNumber??head)),getLogs:vi.fn(async({fromBlock,toBlock}:{fromBlock:bigint;toBlock:bigint})=>allLogs.filter(log=>log.blockNumber>=fromBlock&&log.blockNumber<=toBlock)),getTransaction:vi.fn(async({hash:txHash}:{hash:Hex})=>({hash:txHash,from:sender})),getTransactionReceipt:vi.fn(async({hash:txHash}:{hash:Hex})=>{const receipt=receipts.get(txHash);if(!receipt)throw new Error('missing receipt');return receipt;})};
   const config={app:{chainId:56,mode:'live',addresses:BSC}} as unknown as Runtime,chain={client} as unknown as Chain;
-  const create=()=>{const history=new DailySaleHistory(config,chain,store,client as unknown as Chain['client']);histories.push(history);return history;};
+  const create=(logsClient?:Pick<Chain['client'],'getLogs'>)=>{const history=new DailySaleHistory(config,chain,store,client as unknown as Chain['client'],logsClient);histories.push(history);return history;};
   const history=create();
   function add(number:bigint,holders:Address[]=[outside],index=0,kind:'external'|'internal'|'ambiguous'='external'){
     const txHash=hash(number*1000n+BigInt(index)+1000000n),blockHash=block(number).hash;
@@ -42,8 +42,14 @@ function fixture(step=10n,initialHead?:bigint){
     });
     receipts.set(txHash,{status:'success',transactionHash:txHash,blockNumber:number,blockHash,gasUsed:21000n,effectiveGasPrice:2n,logs});return txHash;
   }
+  function cacheLatest(txHash:Hex,frontier:bigint,updatedAt=Date.now()){
+    const receipt=receipts.get(txHash)!;
+    const record=parseMarketSale({chainId:56,...BSC},{from:sender},receipt,block(receipt.blockNumber))!;
+    const scope=`56:${BSC.token.toLowerCase()}:${BSC.pair.toLowerCase()}`;
+    store.db.prepare('INSERT INTO market_sale(scope,recordJSON,scanBlock,scanHash,searchBlock,searchHead,searchFloor,updatedAt,coverageStart) VALUES(?,?,?,?,NULL,NULL,NULL,?,?) ON CONFLICT(scope) DO UPDATE SET recordJSON=excluded.recordJSON,scanBlock=excluded.scanBlock,scanHash=excluded.scanHash,updatedAt=excluded.updatedAt,coverageStart=excluded.coverageStart').run(scope,JSON.stringify(record),frontier.toString(),block(frontier).hash,updatedAt,record.blockNumber);
+  }
   const row=()=>store.db.prepare('SELECT * FROM market_sale_days ORDER BY date DESC LIMIT 1').get() as {date:string;startBlock:string|null;endBlock:string|null;scanBlock:string|null;scanHash:Hex|null;boundsJSON:string|null;updatedAt:number}|undefined;
-  return {store,history,client,config,chain,create,add,row,receipts,canonical,block,allLogs,first,end,setHead:(n:bigint)=>{head=n;}};
+  return {store,history,client,config,chain,create,add,row,receipts,canonical,block,allLogs,first,end,cacheLatest,setHead:(n:bigint)=>{head=n;}};
 }
 afterEach(async()=>{for(const history of histories.splice(0))await history.stop();vi.useRealTimers();vi.restoreAllMocks();for(const store of stores.splice(0))store.close();for(const dir of dirs.splice(0))rmSync(dir,{recursive:true,force:true});});
 
@@ -86,6 +92,36 @@ describe('Whole previous Beijing day sale history',()=>{
   it('switches yesterday at chain-local midnight and waits for the day-tail three confirmations',async()=>{
     const f=fixture(10n,8740n);f.add(f.end-1n);await f.history.tick();expect(f.history.previousDay()).toMatchObject({date:'2026-10-13',status:'loading',records:[]});expect(f.history.previousDay().reason).toContain('3 次确认');f.setHead(f.end+1n);await f.history.tick();expect(f.history.previousDay()).toMatchObject({date:'2026-10-13',status:'ready'});
     f.setHead(f.end+8640n);await f.history.tick();expect(f.history.previousDay()).toMatchObject({date:'2026-10-14',status:'loading'});expect(f.history.previousDay().reason).toContain('3 次确认');
+  });
+  it('reuses a fresh canonical whole-pool frontier only after fully scanning past its latest selling block',async()=>{
+    const f=fixture(1n);const tx=f.add(f.first);await f.history.tick();expect(f.client.getLogs).toHaveBeenCalledTimes(4);expect(f.history.previousDay().status).toBe('loading');
+    f.cacheLatest(tx,f.end+200n);await f.history.tick();expect(f.client.getLogs).toHaveBeenCalledTimes(4);expect(f.history.previousDay()).toMatchObject({status:'ready',scanBlockNumber:(f.end-1n).toString(),records:[expect.objectContaining({txHash:tx})]});
+  });
+  it('never skips the cached latest selling block and includes all other wallet legs in that same block',async()=>{
+    const f=fixture();const tx=f.add(f.first,[owner,outside]);f.cacheLatest(tx,f.end+200n);await f.history.tick();expect(f.client.getLogs.mock.calls[0]![0].fromBlock).toBe(f.first);expect(f.history.previousDay().records).toHaveLength(2);expect(f.history.previousDay().status).toBe('ready');expect(f.client.getLogs).toHaveBeenCalledTimes(1);
+  });
+  it.each(['orphan','stale','incomplete'] as const)('does not fast-forward over an %s latest-scan proof and falls back to normal full-day reads',async(kind)=>{
+    const f=fixture();const older=f.add(f.first-1n),actual=f.add(f.first),frontier=f.end+200n;
+    f.cacheLatest(older,kind==='incomplete'?f.end-2n:frontier,kind==='stale'?Date.now()-45001:Date.now());if(kind==='orphan')f.canonical.set(frontier,hash(987654));
+    await f.history.tick();expect(f.client.getLogs).toHaveBeenCalledTimes(2);expect(f.history.previousDay()).toMatchObject({status:'ready',records:[expect.objectContaining({txHash:actual})]});
+  });
+  it.each(['legacy','invalid'] as const)('does not reuse a %s coverage certificate and reads every day block normally',async(kind)=>{
+    const f=fixture();const older=f.add(f.first-1n),actual=f.add(f.first);f.cacheLatest(older,f.end+200n);
+    f.store.db.prepare('UPDATE market_sale SET coverageStart=?').run(kind==='legacy'?null:f.first.toString());await f.history.tick();
+    expect(f.client.getLogs).toHaveBeenCalledTimes(2);expect(f.history.previousDay()).toMatchObject({status:'ready',records:[expect.objectContaining({txHash:actual})]});
+  });
+  it('assembles every 50-block archive subrange with no gaps or overlapping boundaries and keeps every seller leg',async()=>{
+    const f=fixture();for(const offset of [49n,50n,4999n,5000n])f.add(f.first+offset,offset===50n?[owner,outside]:[outside]);f.add(f.end-1n);
+    const getLogs=vi.fn(f.client.getLogs.getMockImplementation()!);const tracker=f.create({getLogs} as unknown as Pick<Chain['client'],'getLogs'>);await tracker.tick();
+    expect(f.client.getLogs).not.toHaveBeenCalled();expect(tracker.previousDay()).toMatchObject({status:'ready'});expect(tracker.previousDay().records).toHaveLength(6);
+    const ranges=getLogs.mock.calls.map(([request])=>request);expect(ranges).toHaveLength(173);expect(ranges[0]!.fromBlock).toBe(f.first);expect(ranges.at(-1)!.toBlock).toBe(f.end-1n);
+    expect(ranges.every((range,index)=>range.toBlock-range.fromBlock+1n<=50n&&(index===0||range.fromBlock===ranges[index-1]!.toBlock+1n))).toBe(true);
+  });
+  it('does not commit a 5000-block page when any archive batch subrequest fails, and retries without losing records',async()=>{
+    const f=fixture();const tx=f.add(f.first+50n);let fail=true;const read=f.client.getLogs.getMockImplementation()!;
+    const getLogs=vi.fn(async(request:Parameters<typeof read>[0])=>{if(request.fromBlock===f.first+50n&&fail){fail=false;throw new Error('one 50-block archive subrange unavailable');}return read(request);});
+    const tracker=f.create({getLogs} as unknown as Pick<Chain['client'],'getLogs'>);await tracker.tick();expect(tracker.previousDay()).toMatchObject({status:'loading',scanBlockNumber:null,records:[]});await tracker.tick();
+    expect(tracker.previousDay()).toMatchObject({status:'ready',records:[expect.objectContaining({txHash:tx})]});expect(getLogs).toHaveBeenCalledTimes(273);
   });
   it('retains at most the last three date windows without a row-count cap',async()=>{const f=fixture();for(let day=0;day<5;day++){f.setHead(f.end+262n+BigInt(day)*8640n);await f.history.tick();}const dates=f.store.db.prepare('SELECT date FROM market_sale_days ORDER BY date').all();expect(dates).toEqual([{date:'2026-10-15'},{date:'2026-10-16'},{date:'2026-10-17'}]);});
   it('yields to a recent wallet transaction without looking at stored signed raw payloads',async()=>{const f=fixture();f.store.db.prepare('INSERT INTO attempts(hash,taskId,nonce,raw,input,minOut,chunkIndex,sentAt,state,gasWei,output,confirmed) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)').run(hash(99),hash(98),1,'0x01','1','1',0,Date.now(),'pending','0','0',0);await f.history.tick();expect(f.client.getBlock).not.toHaveBeenCalled();expect(f.history.previousDay().reason).toContain('优先处理');f.store.db.prepare('UPDATE attempts SET sentAt=?').run(Date.now()-121000);await f.history.tick();expect(f.history.previousDay().status).toBe('ready');});

@@ -8,6 +8,7 @@ import { MARKET_READ_RPCS } from './sale-history.js';
 
 const SWAP=parseAbiItem('event Swap(address indexed sender,uint256 amount0In,uint256 amount1In,uint256 amount0Out,uint256 amount1Out,address indexed to)');
 type Client=Pick<Chain['client'],'getChainId'|'getBlock'|'getLogs'|'getTransaction'|'getTransactionReceipt'>;
+type LogsClient=Pick<Client,'getLogs'>;
 type Saved={scope:string;date:string;startTimestamp:string;endTimestamp:string;startBlock:string|null;endBlock:string|null;scanBlock:string|null;scanHash:Hex|null;endHash:Hex|null;boundsJSON:string|null;updatedAt:number};
 type Search={low:string;high:string};
 type Page={from:string;to:string;hash:Hex;done:string[]};
@@ -21,12 +22,14 @@ const hash=(s:unknown):s is Hex=>typeof s==='string'&&/^0x[0-9a-f]{64}$/i.test(s
 
 /** Confirmed, previous Beijing calendar day. Scanning and API reads never sign transactions. */
 export class DailySaleHistory {
-  private readonly client:Client;private readonly scope:string;
+  private readonly client:Client;private readonly logsClient:LogsClient;private readonly splitLogs:boolean;private readonly scope:string;
   private saved:Saved|null=null;private bounds:Bounds|null=null;private records:SaleRecord[]=[];private corrupt=false;
   private state:PreviousDaySales['status']='loading';private reason='正在根据已确认链上时间定位北京时间上一天。';
   private running=false;private stopping=false;private timer:ReturnType<typeof setInterval>|undefined;private work:Promise<void>|undefined;
-  constructor(public config:Runtime,public chain:Chain,public store:Store,client?:Client){
+  constructor(public config:Runtime,public chain:Chain,public store:Store,client?:Client,logsClient?:LogsClient){
     this.client=client??(config.app.mode==='local'?chain.client:createPublicClient({transport:fallback(MARKET_READ_RPCS.map(url=>http(url,{timeout:2500,retryCount:0})),{rank:false,retryCount:0})}));
+    this.splitLogs=Boolean(logsClient)||(!client&&config.app.mode!=='local');
+    this.logsClient=logsClient??(this.splitLogs?createPublicClient({transport:http('https://public.1rpc.io/bnb',{batch:{batchSize:20,wait:16},timeout:5000,retryCount:0})}):this.client);
     this.scope=`${config.app.chainId}:${config.app.addresses.token.toLowerCase()}:${config.app.addresses.pair.toLowerCase()}`;
     const row=this.store.db.prepare('SELECT * FROM market_sale_days WHERE scope=? ORDER BY date DESC LIMIT 1').get(this.scope) as Saved|undefined;
     if(row){this.load(row);this.state='stale';this.reason=`已恢复 ${row.date} 的缓存，正在核对上一天日期、规范链及扫描完整性。`;}
@@ -112,11 +115,38 @@ export class DailySaleHistory {
     if(last.hash!==row.endHash||last.timestamp>=BigInt(row.endTimestamp))throw new ScanReorg('day changed');
     return last;
   }
+  /** Reuse the latest-sale scanner's verified frontier only after its newest sale is behind this whole block. */
+  private async coveredRemainder(from:bigint,last:bigint,work:Work){
+    const cached=this.store.db.prepare('SELECT recordJSON,scanBlock,scanHash,coverageStart,searchBlock,searchHead,searchFloor,updatedAt FROM market_sale WHERE scope=?').get(this.scope) as {recordJSON:string|null;scanBlock:string|null;scanHash:Hex|null;coverageStart:string|null;searchBlock:string|null;searchHead:string|null;searchFloor:string|null;updatedAt:number}|undefined;
+    let latest:SaleRecord;
+    try{
+      if(!cached?.recordJSON||!digits(cached.scanBlock)||!hash(cached.scanHash)||!digits(cached.coverageStart)||cached.searchBlock!==null||cached.searchHead!==null||cached.searchFloor!==null||!Number.isFinite(cached.updatedAt)||Date.now()-cached.updatedAt<0||Date.now()-cached.updatedAt>45000)return false;
+      latest=JSON.parse(cached.recordJSON) as SaleRecord;
+      if(latest.source!=='market'||latest.chainId!==this.config.app.chainId||!digits(latest.blockNumber)||!digits(latest.timestamp)||!hash(latest.blockHash)||!hash(latest.txHash)||BigInt(cached.coverageStart!)>BigInt(latest.blockNumber)||BigInt(latest.blockNumber)>=from||BigInt(latest.blockNumber)>BigInt(cached.scanBlock)||BigInt(cached.scanBlock)<last)return false;
+    }catch{return false;}
+    const [saleBlock,frontier]=await Promise.all([this.header(BigInt(latest.blockNumber),work),this.header(BigInt(cached!.scanBlock!),work)]);
+    if(saleBlock.hash!==latest.blockHash||saleBlock.timestamp.toString()!==latest.timestamp||frontier.hash!==cached!.scanHash)return false;
+    await this.dayAnchor(work);
+    if((await this.header(BigInt(this.saved!.endBlock!),work)).timestamp<BigInt(this.saved!.endTimestamp))throw new ScanReorg('end boundary moved');
+    const next={...this.bounds!};delete next.page;
+    this.write({scanBlock:last.toString(),scanHash:this.saved!.endHash,boundsJSON:JSON.stringify(next)},work);this.bounds=next;return true;
+  }
+  private async logs(from:bigint,to:bigint,work:Work){
+    this.guard(work);
+    const ranges:{fromBlock:bigint;toBlock:bigint}[]=[];
+    const size=this.splitLogs?50n:5000n;
+    for(let start=from;start<=to;start+=size)ranges.push({fromBlock:start,toBlock:start+size-1n<to?start+size-1n:to});
+    // Every 1RPC subrequest respects its 50-block range; HTTP batching combines up to 20 requests.
+    // Wait for all in-flight responses before shutdown or retry, including a partial batch failure.
+    const results=await Promise.allSettled(ranges.map(range=>this.logsClient.getLogs({address:this.config.app.addresses.pair,event:SWAP,...range,strict:true})));
+    this.guard(work);
+    return results.flatMap(result=>{if(result.status==='rejected')throw result.reason;return result.value;});
+  }
   private async page(from:bigint,to:bigint,work:Work){
     this.guard(work);if(++work.pages>4)throw new ScanBudget();
     const before=await this.header(to,work),savedPage=this.bounds!.page;
     if(savedPage&&(BigInt(savedPage.from)!==from||BigInt(savedPage.to)!==to||savedPage.hash!==before.hash))throw new ScanReorg('page changed');
-    const logs=await this.client.getLogs({address:this.config.app.addresses.pair,event:SWAP,fromBlock:from,toBlock:to,strict:true});this.guard(work);
+    const logs=await this.logs(from,to,work);this.guard(work);
     const sells=logs.filter(log=>log.args.amount1In>0n&&log.args.amount0Out>0n);
     const unique=new Map<Hex,typeof sells[number]>();
     for(const log of sells){if(log.removed||!log.transactionHash||!log.blockHash||log.blockNumber===null||log.blockNumber<from||log.blockNumber>to)throw new Error('invalid sale log');unique.set(log.transactionHash.toLowerCase() as Hex,log);}
@@ -162,6 +192,7 @@ export class DailySaleHistory {
       if(first>last){this.write({scanBlock:last.toString(),scanHash:this.saved!.endHash},work);}
       while(!this.complete()&&work.pages<4){
         const from=this.saved!.scanBlock===null?first:BigInt(this.saved!.scanBlock)+1n;
+        if(await this.coveredRemainder(from,last,work))break;
         const to=this.bounds!.page?BigInt(this.bounds!.page.to):(from+4999n<last?from+4999n:last);
         await this.page(from,to,work);
       }

@@ -8,7 +8,7 @@ import { parseMarketSale } from './market-sale.js';
 const SWAP=parseAbiItem('event Swap(address indexed sender,uint256 amount0In,uint256 amount1In,uint256 amount0Out,uint256 amount1Out,address indexed to)');
 export const MARKET_READ_RPCS=['https://bsc-rpc.publicnode.com','https://rpc-bnb.blockmachine.io'] as const;
 type Client=Pick<Chain['client'],'getChainId'|'getBlock'|'getLogs'|'getTransaction'|'getTransactionReceipt'>;
-type Saved={scope:string;recordJSON:string|null;scanBlock:string|null;scanHash:Hex|null;searchBlock:string|null;searchHead:string|null;searchFloor:string|null;updatedAt:number};
+type Saved={scope:string;recordJSON:string|null;scanBlock:string|null;scanHash:Hex|null;coverageStart:string|null;searchBlock:string|null;searchHead:string|null;searchFloor:string|null;updatedAt:number};
 type Work={deadline:number;pages:number};
 class ScanPause extends Error {}
 class ScanBudget extends Error {}
@@ -22,11 +22,17 @@ export class SaleHistory {
   constructor(public config:Runtime,public chain:Chain,public store:Store,client?:Client){
     this.client=client??(config.app.mode==='local'?chain.client:createPublicClient({transport:fallback(MARKET_READ_RPCS.map(url=>http(url,{timeout:2500,retryCount:0})),{rank:false,retryCount:0})}));
     const scope=`${config.app.chainId}:${config.app.addresses.token.toLowerCase()}:${config.app.addresses.pair.toLowerCase()}`;
-    this.saved=this.store.db.prepare('SELECT scope,recordJSON,scanBlock,scanHash,searchBlock,searchHead,searchFloor,updatedAt FROM market_sale WHERE scope=?').get(scope) as Saved??{scope,recordJSON:null,scanBlock:null,scanHash:null,searchBlock:null,searchHead:null,searchFloor:null,updatedAt:0};
+    this.saved=this.store.db.prepare('SELECT scope,recordJSON,scanBlock,scanHash,coverageStart,searchBlock,searchHead,searchFloor,updatedAt FROM market_sale WHERE scope=?').get(scope) as Saved??{scope,recordJSON:null,scanBlock:null,scanHash:null,coverageStart:null,searchBlock:null,searchHead:null,searchFloor:null,updatedAt:0};
     try{
       this.record=this.saved.recordJSON?JSON.parse(this.saved.recordJSON) as SaleRecord:null;
       if(this.record&&(this.record.source!=='market'||this.record.chainId!==config.app.chainId||!/^\d+$/.test(this.record.blockNumber)||!/^0x[0-9a-f]{64}$/i.test(this.record.blockHash)))throw new Error('cache');
-    }catch{this.record=null;this.saved={...this.saved,recordJSON:null,scanBlock:null,scanHash:null,searchBlock:null,searchHead:null,searchFloor:null};this.state='stale';this.reason='成交缓存格式无效，后台将重新查找；钱包任务和费用记录不受影响。';}
+    }catch{this.record=null;this.saved={...this.saved,recordJSON:null,scanBlock:null,scanHash:null,coverageStart:null,searchBlock:null,searchHead:null,searchFloor:null};this.state='stale';this.reason='成交缓存格式无效，后台将重新查找；钱包任务和费用记录不受影响。';}
+    if(this.record&&(this.saved.coverageStart===null||!/^\d+$/.test(this.saved.coverageStart)||BigInt(this.saved.coverageStart)>BigInt(this.record.blockNumber))){
+      // Legacy latest-sale rows have no proof that their cursor covered deep forks.
+      // Preserve the public record but rebuild coverage before another reader trusts it.
+      this.saved={...this.saved,scanBlock:null,scanHash:null,coverageStart:null,searchBlock:null,searchHead:null,searchFloor:null};
+      this.store.db.prepare('UPDATE market_sale SET scanBlock=NULL,scanHash=NULL,coverageStart=NULL,searchBlock=NULL,searchHead=NULL,searchFloor=NULL WHERE scope=?').run(scope);
+    }
     if(this.record){this.state='stale';this.reason='已恢复上一笔缓存，正在重新核对规范链和最新成交。';}
   }
   latest():LatestSale{
@@ -45,23 +51,24 @@ export class SaleHistory {
   private guard(work:Work){if(this.stopping)throw new ScanPause('成交查询已停止。');if(this.trading())throw new ScanPause('优先处理钱包卖出交易，成交查询暂时让出读取资源。');if(Date.now()>=work.deadline)throw new ScanBudget();}
   private save(changes:Partial<Saved>,work:Work){
     this.guard(work);const next={...this.saved,...changes,updatedAt:Date.now()};
-    this.store.db.prepare('INSERT INTO market_sale(scope,recordJSON,scanBlock,scanHash,searchBlock,searchHead,searchFloor,updatedAt) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(scope) DO UPDATE SET recordJSON=excluded.recordJSON,scanBlock=excluded.scanBlock,scanHash=excluded.scanHash,searchBlock=excluded.searchBlock,searchHead=excluded.searchHead,searchFloor=excluded.searchFloor,updatedAt=excluded.updatedAt').run(next.scope,next.recordJSON,next.scanBlock,next.scanHash,next.searchBlock,next.searchHead,next.searchFloor,next.updatedAt);
+    this.store.db.prepare('INSERT INTO market_sale(scope,recordJSON,scanBlock,scanHash,coverageStart,searchBlock,searchHead,searchFloor,updatedAt) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(scope) DO UPDATE SET recordJSON=excluded.recordJSON,scanBlock=excluded.scanBlock,scanHash=excluded.scanHash,coverageStart=excluded.coverageStart,searchBlock=excluded.searchBlock,searchHead=excluded.searchHead,searchFloor=excluded.searchFloor,updatedAt=excluded.updatedAt').run(next.scope,next.recordJSON,next.scanBlock,next.scanHash,next.coverageStart,next.searchBlock,next.searchHead,next.searchFloor,next.updatedAt);
     this.saved=next;this.record=next.recordJSON?JSON.parse(next.recordJSON) as SaleRecord:null;
   }
   private async header(number:bigint,work:Work){this.guard(work);const block=await this.client.getBlock({blockNumber:number});this.guard(work);if(block.number!==number||!block.hash)throw new Error('成交查询区块无效');return block;}
   private async rewind(confirmed:bigint,work:Work,recordInvalid=false){
-    if(recordInvalid){
+    if(recordInvalid||!this.record){
       // The replacement previous sale can be arbitrarily earlier than 50 blocks.
       // Reuse the bounded reverse bootstrap instead of losing it behind a forward cursor.
-      this.save({recordJSON:null,scanBlock:null,scanHash:null,searchBlock:null,searchHead:null,searchFloor:null},work);
+      this.save({recordJSON:null,scanBlock:null,scanHash:null,coverageStart:null,searchBlock:null,searchHead:null,searchFloor:null},work);
       this.state='loading';this.reason='原成交已发生重组，重新分批查找全池最近一笔已确认的外部卖出。';return;
     }
-    const cursor=this.saved.scanBlock?BigInt(this.saved.scanBlock):confirmed;
-    const sold=recordInvalid&&this.record?BigInt(this.record.blockNumber):cursor;
-    const base=(cursor<sold?cursor:sold)<confirmed?(cursor<sold?cursor:sold):confirmed;
-    const rewind=base>50n?base-50n:0n,block=await this.header(rewind,work);
-    this.save({recordJSON:recordInvalid?null:this.saved.recordJSON,scanBlock:rewind.toString(),scanHash:block.hash,searchBlock:null,searchHead:null,searchFloor:null},work);
-    this.state=this.record?'stale':'loading';this.reason='原成交或扫描区块已发生重组，已回退扫描位置并重新查找。';
+    const sold=BigInt(this.record.blockNumber);
+    if(sold>confirmed)throw new Error('缓存成交暂不足 3 确认');
+    // A fork after a canonical sale may begin arbitrarily far behind the cursor.
+    // Re-scan that sale's own block and every later block rather than rewinding 50.
+    const rewind=sold>0n?sold-1n:0n,block=await this.header(rewind,work);
+    this.save({scanBlock:rewind.toString(),scanHash:block.hash,coverageStart:sold.toString(),searchBlock:null,searchHead:null,searchFloor:null},work);
+    this.state='stale';this.reason='扫描区块已发生重组，从仍在规范链上的最新成交区块重新查找。';
   }
   private async range(from:bigint,to:bigint,work:Work):Promise<{sale:SaleRecord|null;hash:Hex}>{
     this.guard(work);if(++work.pages>4)throw new ScanBudget();
@@ -102,14 +109,14 @@ export class SaleHistory {
     if(this.saved.scanBlock===null){
       if(this.saved.searchHead!==null){
         const anchor=await this.header(BigInt(this.saved.searchHead),work);
-        if(anchor.hash!==this.saved.scanHash){this.save({recordJSON:null,searchHead:null,searchBlock:null,searchFloor:null,scanHash:null},work);return;}
+        if(anchor.hash!==this.saved.scanHash){this.save({recordJSON:null,coverageStart:null,searchHead:null,searchBlock:null,searchFloor:null,scanHash:null},work);return;}
       }else this.save({searchHead:confirmed.toString(),searchBlock:confirmed.toString(),searchFloor:(confirmed>=499999n?confirmed-499999n:0n).toString(),scanHash:confirmedBlock.hash},work);
       while(this.saved.searchBlock!==null&&work.pages<4){
         const end=BigInt(this.saved.searchBlock),floor=BigInt(this.saved.searchFloor!),from=end-4999n>floor?end-4999n:floor;
         const {sale:found}=await this.range(from,end,work);
         const anchor=await this.header(BigInt(this.saved.searchHead!),work);
         if(anchor.hash!==this.saved.scanHash)throw new Error('回查锚点已重组');
-        if(found||from===floor){this.save({recordJSON:found?JSON.stringify(found):null,scanBlock:this.saved.searchHead,scanHash:anchor.hash,searchHead:null,searchBlock:null,searchFloor:null},work);break;}
+        if(found||from===floor){this.save({recordJSON:found?JSON.stringify(found):null,scanBlock:this.saved.searchHead,scanHash:anchor.hash,coverageStart:found?.blockNumber??null,searchHead:null,searchBlock:null,searchFloor:null},work);break;}
         this.save({searchBlock:(from-1n).toString()},work);
       }
       if(this.saved.scanBlock===null){this.state='loading';this.reason='正在分批回查最近的真实外部卖出，尚不能判断全池上一笔成交。';return;}
