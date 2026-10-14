@@ -8,3 +8,5 @@ export type SaleRecord={
   builderFeeWei:string|null;taxPercent:string|null;taxReason:string;settlementReason:string;
 };
 export type LatestSale={sale:SaleRecord|null;checkedAt:number;status:'loading'|'ready'|'stale';reason:string;scanBlockNumber:string|null};
+/** All external sells in the previous Beijing calendar day. Times are Unix seconds. */
+export type PreviousDaySales={records:SaleRecord[];date:string;startTimestamp:string;endTimestamp:string;checkedAt:number;status:'loading'|'ready'|'stale';reason:string;scanBlockNumber:string|null};

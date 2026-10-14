@@ -8,14 +8,14 @@ const normalized=(address:string)=>address.toLowerCase();
 const unknownSettlement='换出 USDT 由其他地址收取，无法归属这次持币地址到账。';
 
 /** Receipt evidence only: never substitutes pool input or a block-end tax getter for wallet outflows. */
-export function parseMarketSale(config:MarketSaleConfig,tx:{from:Address},receipt:MarketSaleReceipt,block:MarketSaleBlock):SaleRecord|null{
-  if(receipt.status!=='success')return null;
+export function parseMarketSales(config:MarketSaleConfig,tx:{from:Address},receipt:MarketSaleReceipt,block:MarketSaleBlock):SaleRecord[]{
+  if(receipt.status!=='success')return [];
   if(!block.hash||normalized(block.hash)!==normalized(receipt.blockHash)||(block.number!==undefined&&block.number!==receipt.blockNumber))throw new Error('卖出回执不属于所核对的规范区块');
   const token=normalized(config.token),pair=normalized(config.pair),usdt=normalized(config.usdt);
   const transfers=parseEventLogs({abi:tokenAbi,eventName:'Transfer',logs:receipt.logs}).filter(e=>[token,usdt].includes(normalized(e.address)));
   const swaps=parseEventLogs({abi:pairAbi,eventName:'Swap',logs:receipt.logs}).filter(e=>normalized(e.address)===pair);
   const position=(event:{logIndex:number|null})=>{
-    if(event.logIndex===null||!Number.isSafeInteger(event.logIndex)||event.logIndex<0)throw new Error('卖出日志缺少有效的位置，无法确认最新成交');
+    if(event.logIndex===null||!Number.isSafeInteger(event.logIndex)||event.logIndex<0)throw new Error('卖出日志缺少有效的位置，无法确认成交');
     return event.logIndex;
   };
   const tokenTransfers=transfers.filter(e=>normalized(e.address)===token).sort((a,b)=>position(a)-position(b));
@@ -28,13 +28,14 @@ export function parseMarketSale(config:MarketSaleConfig,tx:{from:Address},receip
     const index=position(swap);
     if(swap.args.amount1In>0n&&swap.args.amount0Out>0n){
       const inputs=tokenTransfers.filter(e=>position(e)>previousSwap&&position(e)<index&&normalized(e.args.to)===pair&&e.args.value>0n&&![token,pair].includes(normalized(e.args.from)));
-      if(inputs.length>1)throw new Error('最新交易存在多地址或多次代币入池，无法唯一确认实际卖币钱包');
+      if(inputs.length>1)throw new Error('交易存在多地址或多次代币入池，无法唯一确认实际卖币钱包');
       if(inputs.length===1)legs.push({swap,net:inputs[0]!,previousSwap});
       // Token-owned transfers are its internal fee conversion, not a holder sale.
     }
     previousSwap=index;
   }
-  const leg=legs.at(-1);if(!leg)return null;
+  const holderCount=new Set(legs.map(e=>normalized(e.net.args.from))).size;
+  return legs.map(leg=>{
   const owner=leg.net.args.from,ownerKey=normalized(owner),netIndex=position(leg.net),swapIndex=position(leg.swap);
   const priorNet=tokenTransfers.filter(e=>position(e)<netIndex&&normalized(e.args.from)===ownerKey&&normalized(e.args.to)===pair&&e.args.value>0n).at(-1);
   const start=priorNet?position(priorNet):-1;
@@ -61,6 +62,12 @@ export function parseMarketSale(config:MarketSaleConfig,tx:{from:Address},receip
     if(credited>0n&&credited<=swapOut){receivedUSDT=credited.toString();settlementReason='本笔仅一组外部卖出，按代收地址在 Swap 后转给持币钱包的 USDT 实收统计，不把池子输出全部视为到账。';}
   }
   return {source:'market',owner,txSender:tx.from,recipient,txHash:receipt.transactionHash,chainId:config.chainId,timestamp:block.timestamp.toString(),blockNumber:receipt.blockNumber.toString(),blockHash:receipt.blockHash,
-    soldInput,receivedUSDT,swapUSDT:swapOut.toString(),holderCount:new Set(legs.map(e=>normalized(e.net.args.from))).size,logIndex:swapIndex,
+    soldInput,receivedUSDT,swapUSDT:swapOut.toString(),holderCount,logIndex:swapIndex,
     gasWei:(receipt.gasUsed*receipt.effectiveGasPrice).toString(),gasUsed:receipt.gasUsed.toString(),builderFeeWei:null,taxPercent,taxReason,settlementReason};
+  });
+}
+
+/** Existing latest-sale readers continue selecting the final external sale leg. */
+export function parseMarketSale(config:MarketSaleConfig,tx:{from:Address},receipt:MarketSaleReceipt,block:MarketSaleBlock):SaleRecord|null{
+  return parseMarketSales(config,tx,receipt,block).at(-1)??null;
 }

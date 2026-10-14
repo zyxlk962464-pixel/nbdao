@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { encodeAbiParameters, encodeEventTopics, type Address, type Hex } from 'viem';
 import { BSC, pairAbi, tokenAbi } from '../packages/shared/src/index.js';
-import { parseMarketSale, type MarketSaleReceipt } from '../apps/keeper/src/market-sale.js';
+import { parseMarketSale, parseMarketSales, type MarketSaleReceipt } from '../apps/keeper/src/market-sale.js';
 
 const address=(n:number)=>`0x${n.toString(16).padStart(40,'0')}` as Address;
 const hash=(n:number)=>`0x${n.toString(16).padStart(64,'0')}` as Hex;
@@ -14,6 +14,7 @@ function transfer(index:number,from:Address,to:Address,value:bigint,token:Addres
 function swap(index:number,to:Address,amountIn=75n,amountOut=70n,pair:Address=BSC.pair){return log(index,pair,encodeEventTopics({abi:pairAbi,eventName:'Swap',args:{sender:helper,to}}),encodeAbiParameters(Array.from({length:4},()=>({type:'uint256'} as const)),[0n,amountIn,amountOut,0n]));}
 function receipt(logs:Log[]):MarketSaleReceipt{return {status:'success',transactionHash:hash(1),blockNumber:block.number,blockHash:block.hash,gasUsed:21000n,effectiveGasPrice:2n,logs};}
 function parse(logs:Log[]){return parseMarketSale(config,{from:sender},receipt(logs),block);}
+function parseAll(logs:Log[]){return parseMarketSales(config,{from:sender},receipt(logs),block);}
 const direct=()=>[transfer(1,owner,BSC.token,25n),transfer(2,owner,BSC.pair,75n),transfer(3,BSC.pair,owner,70n,BSC.usdt),swap(4,owner)];
 describe('market sale receipt parser',()=>{
   it('uses the holder, receipt Gas, gross wallet outflow and direct USDT receipt',()=>{
@@ -73,5 +74,39 @@ describe('market sale receipt parser',()=>{
     const gross=15721990116923849220247n,fee=6628133287448509760910n,net=9093856829475339459337n;
     const logs=[transfer(1,owner,BSC.token,fee),transfer(2,BSC.token,BSC.pair,6403045938143477254146n),swap(3,autoSwap,6403045938143477254146n,1432000396415970292555n),transfer(4,owner,BSC.pair,net),transfer(5,BSC.pair,helper,2022748056547102693112n,BSC.usdt),swap(6,helper,net,2022748056547102693112n)];
     expect(parse(logs)).toMatchObject({soldInput:gross.toString(),taxPercent:'42.1584',swapUSDT:'2022748056547102693112',receivedUSDT:null});
+  });
+  it('returns all holder legs in log order even if RPC supplies logs out of order',()=>{
+    const logs=[...direct(),transfer(5,other,BSC.token,40n),transfer(6,other,BSC.pair,60n),transfer(7,BSC.pair,other,50n,BSC.usdt),swap(8,other,60n,50n)];
+    const sales=parseAll([...logs].reverse());
+    expect(sales).toHaveLength(2);
+    expect(sales[0]).toMatchObject({owner,soldInput:'100',taxPercent:'25.0000',receivedUSDT:'70',holderCount:2,logIndex:4,gasWei:'42000'});
+    expect(sales[1]).toMatchObject({owner:other,soldInput:'100',taxPercent:'40.0000',receivedUSDT:'50',holderCount:2,logIndex:8,gasWei:'42000'});
+    expect(parse(logs)).toEqual(sales[1]);
+  });
+  it('keeps repeated-holder fees independent across an intervening holder and internal fee conversions',()=>{
+    const logs=[...direct(),transfer(5,other,BSC.token,50n),transfer(6,BSC.token,BSC.pair,45n),swap(7,autoSwap,45n,40n),transfer(8,other,BSC.pair,50n),transfer(9,BSC.pair,other,45n,BSC.usdt),swap(10,other,50n,45n),transfer(11,owner,BSC.token,80n),transfer(12,BSC.token,BSC.pair,70n),swap(13,autoSwap,70n,60n),transfer(14,owner,BSC.pair,20n),transfer(15,BSC.pair,owner,10n,BSC.usdt),swap(16,owner,20n,10n)];
+    expect(parseAll(logs).map(sale=>({owner:sale.owner,tax:sale.taxPercent,sold:sale.soldInput,received:sale.receivedUSDT,index:sale.logIndex}))).toEqual([
+      {owner,tax:'25.0000',sold:'100',received:'70',index:4},
+      {owner:other,tax:'50.0000',sold:'100',received:'45',index:10},
+      {owner,tax:'80.0000',sold:'100',received:'10',index:16}
+    ]);
+  });
+  it('does not assign shared helper payouts to any holder in a batch',()=>{
+    const logs=[transfer(1,owner,BSC.token,10n),transfer(2,owner,BSC.pair,90n),transfer(3,BSC.pair,helper,80n,BSC.usdt),swap(4,helper,90n,80n),transfer(5,other,BSC.token,40n),transfer(6,other,BSC.pair,60n),transfer(7,BSC.pair,helper,50n,BSC.usdt),swap(8,helper,60n,50n),transfer(9,helper,owner,80n,BSC.usdt),transfer(10,helper,other,50n,BSC.usdt)];
+    const sales=parseAll(logs);
+    expect(sales.map(sale=>[sale.owner,sale.receivedUSDT,sale.swapUSDT])).toEqual([[owner,null,'80'],[other,null,'50']]);
+    expect(sales.every(sale=>sale.holderCount===2&&sale.gasWei==='42000')).toBe(true);
+  });
+  it('keeps uncertain leg deductions local without discarding a later leg from that holder',()=>{
+    const logs=[transfer(0,owner,other,5n),...direct(),transfer(5,owner,BSC.token,40n),transfer(6,owner,BSC.pair,60n),transfer(7,BSC.pair,owner,50n,BSC.usdt),swap(8,owner,60n,50n)];
+    const sales=parseAll(logs);
+    expect(sales[0]).toMatchObject({soldInput:null,taxPercent:null,receivedUSDT:'70'});
+    expect(sales[1]).toMatchObject({soldInput:'100',taxPercent:'40.0000',receivedUSDT:'50'});
+  });
+  it('preserves empty/reverted behavior for both all-sales and latest-sale APIs',()=>{
+    const logs=[transfer(1,BSC.token,BSC.pair,10n),swap(2,autoSwap,10n,5n)];
+    expect(parseAll(logs)).toEqual([]);expect(parse(logs)).toBeNull();
+    expect(parseMarketSales(config,{from:sender},{...receipt(direct()),status:'reverted'},block)).toEqual([]);
+    expect(parseMarketSale(config,{from:sender},{...receipt(direct()),status:'reverted'},block)).toBeNull();
   });
 });

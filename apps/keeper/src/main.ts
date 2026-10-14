@@ -12,11 +12,13 @@ import { ReadGate } from './read-gate.js';
 import { TaxRecorder } from './tax-recorder.js';
 import { OpeningWorker,openingPolicy } from './opening-worker.js';
 import { SaleHistory } from './sale-history.js';
+import { DailySaleHistory } from './daily-sale-history.js';
 process.umask(0o077);
 const config=runtime(),store=new Store(config.database),chain=new Chain(config),optimizer=new Optimizer(config,chain),worker=new Worker(config,chain,optimizer,store);
 const taxRecorder=new TaxRecorder(config,chain,store);
 const openingWorker=new OpeningWorker(config,chain,store);
 const saleHistory=new SaleHistory(config,chain,store);
+const dailySaleHistory=new DailySaleHistory(config,chain,store);
 const rates=new Map<string,{start:number;count:number}>();
 const reads=new ReadGate();
 const server=createServer(async(req,res)=>{
@@ -38,6 +40,7 @@ const server=createServer(async(req,res)=>{
     else if(req.method==='GET'&&parts[0]==='task'){const id=taskId(parts[1]);result=await reads.run(url.pathname,async()=>{assertOwnerAllowed(config,(await chain.rawTask(id)).owner);return chain.view(id,store);});}
     else if(req.method==='GET'&&parts[0]==='tasks'&&isAddress(parts[1]??'')){const owner=parts[1] as Address;assertOwnerAllowed(config,owner);result=await reads.run(url.pathname,async()=>{const ids=store.tasks(owner).map(t=>t.id);if(config.app.sellerAddress){const active=await chain.client.readContract({address:config.app.sellerAddress,abi:(await import('../../../packages/shared/src/index.js')).executorAbi,functionName:'activeTaskId',args:[owner]});if(active!==ZERO_ID&&!ids.includes(active))ids.unshift(active);}return {tasks:await Promise.all(ids.map(id=>chain.view(id,store)))};});}
     else if(req.method==='GET'&&url.pathname==='/sales/latest'){result=saleHistory.latest();}
+    else if(req.method==='GET'&&url.pathname==='/sales/previous-day'){result=dailySaleHistory.previousDay();}
     else if(req.method==='GET'&&parts[0]==='opening'&&parts[1]==='task'){const id=taskId(parts[2]);result=await reads.run(url.pathname,()=>openingWorker.view(id));}
     else if(req.method==='GET'&&parts[0]==='opening'&&parts[1]==='tasks'&&isAddress(parts[2]??'')){const owner=parts[2] as Address;assertOwnerAllowed(config,owner);result=await reads.run(url.pathname,async()=>{const ids=openingWorker.records.tasks(owner).map(t=>t.id);if(config.openingSeller){const active=await chain.client.readContract({address:config.openingSeller,abi:openingExecutorAbi,functionName:'activeTaskId',args:[owner]});if(active!==ZERO_ID&&!ids.includes(active))ids.unshift(active);}return {tasks:await Promise.all(ids.map(id=>openingWorker.view(id)))};});}
     else if(req.method==='POST'&&url.pathname==='/opening/register'){
@@ -54,6 +57,6 @@ const server=createServer(async(req,res)=>{
     res.end(stringify(result));
   }catch(e){if(res.statusCode===200)res.statusCode=400;res.end(stringify({error:message(e)}));}
 });
-server.listen(config.port,config.host,()=>{console.log(`Keeper http://${config.host}:${config.port} · ${config.app.mode} · ${config.app.ready?'配置就绪':config.app.missing.join('、')}`);worker.start();taxRecorder.start();openingWorker.start();saleHistory.start();});
+server.listen(config.port,config.host,()=>{console.log(`Keeper http://${config.host}:${config.port} · ${config.app.mode} · ${config.app.ready?'配置就绪':config.app.missing.join('、')}`);worker.start();taxRecorder.start();openingWorker.start();saleHistory.start();dailySaleHistory.start();});
 let stopping=false;
-for(const signal of ['SIGINT','SIGTERM'] as const)process.on(signal,()=>{if(stopping)return;stopping=true;optimizer.close();const stopped=Promise.all([worker.stop(),taxRecorder.stop(),openingWorker.stop(),saleHistory.stop()]);server.close(()=>{void stopped.then(()=>{store.close();process.exit(0);});});});
+for(const signal of ['SIGINT','SIGTERM'] as const)process.on(signal,()=>{if(stopping)return;stopping=true;optimizer.close();const stopped=Promise.all([worker.stop(),taxRecorder.stop(),openingWorker.stop(),saleHistory.stop(),dailySaleHistory.stop()]);server.close(()=>{void stopped.then(()=>{store.close();process.exit(0);});});});
